@@ -1,7 +1,7 @@
 # wav_to_text
 Python ile .wav uzantılı dosya .txt dosyasına dönüştürüldü. Projede PyQt5, Pydub, SpeechRecognition kütüphaneleri kullanıldı.
 
-"pip install PyQt5"
+*pip install PyQt5*
 "pip install pydub"
 "pip install SpeechRecognition"
 
