@@ -10,8 +10,3 @@ pip install SpeechRecognition
 
 
 - Arayüz için Qt Designer uygulaması kullanıldı.
-- Kullanıcı ilan atabiliyor. 
-- Apart ekleme işlemini admin yapabiliyor. 
-## Sıradaki Güncellemeler
-1. Kullanıcıların apartlar ve kişiler hakkında yorum yapma özelliği eklenecek.
-2. Kullanıcı arasında mesajlaşma özelliği eklenecek. 
