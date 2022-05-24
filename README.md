@@ -7,6 +7,6 @@ pip install PyQt5
 pip install pydub
 pip install SpeechRecognition
 ```
-
+Kütüphanelerin yüklenmesinden sonra kod çalıştırılabilir.
 
 - Arayüz için Qt Designer uygulaması kullanıldı.
