@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import os
 import sys
+from dataclasses import dataclass
 from tempfile import TemporaryDirectory
 import speech_recognition as sr
 from PyQt5 import QtCore, QtGui
@@ -15,11 +18,21 @@ from pydub.utils import make_chunks
 # pyinstaller --noconsole python_dosyam.py
 # python -m PyQt5.uic.pyuic -x untitled.ui -o untitlied.py
 
-os.getcwd()
+REQUEST_TIMEOUT_SECONDS = 30
+
+
+@dataclass(frozen=True)
+class ConversionResult:
+    status: str
+    text: str
+    successful_chunks: int
+    total_chunks: int
+    output_path: str | None
+    errors: tuple[str, ...] = ()
 
 
 class AudioToTextThread(QtCore.QThread):
-    done = QtCore.pyqtSignal(str)
+    done = QtCore.pyqtSignal(object)
     error = QtCore.pyqtSignal(str)
     progress = QtCore.pyqtSignal(int)
 
@@ -29,21 +42,27 @@ class AudioToTextThread(QtCore.QThread):
 
     def run(self):
         try:
-            text = self._convert()
+            result = self._convert()
         except Exception as exc:
             self.error.emit("Dönüştürme tamamlanamadı: {0}".format(exc))
         else:
-            self.done.emit(text)
+            self.done.emit(result)
 
     def _convert(self):
         r = sr.Recognizer()
+        r.operation_timeout = REQUEST_TIMEOUT_SECONDS
         with open(self.file_path, "rb") as input_file:
             myaudio = AudioSegment.from_file(input_file, 'wav')
         chunk_length_ms = 50000  # pydub calculates in milliseconds
         chunks = make_chunks(myaudio, chunk_length_ms)
+        if not chunks:
+            return ConversionResult("failed", "", 0, 0, None,
+                                    ("WAV dosyası ses verisi içermiyor.",))
         adet = int(len(myaudio) / chunk_length_ms) + 1
         yuzde = (100 / adet)
         text = ""
+        successful_chunks = 0
+        errors = []
         with TemporaryDirectory(prefix="wav_to_text_") as temp_dir:
             for i, chunk in enumerate(chunks):
                 chunk_name = os.path.join(temp_dir, 'chunk{0}.wav'.format(i + 1))
@@ -54,11 +73,27 @@ class AudioToTextThread(QtCore.QThread):
                 with sr.AudioFile(chunk_name) as source:
                     audio = r.record(source)  # read the entire audio file
                     try:
-                        text = text + str(r.recognize_google(audio, language='tr-tr'))
+                        transcript = r.recognize_google(audio, language='tr-tr').strip()
+                        if not transcript:
+                            raise sr.UnknownValueError()
                     except sr.UnknownValueError:
-                        text += "[Ses Algılanamadı.]"
+                        message = "{0}. parça: Ses algılanamadı.".format(i + 1)
+                        errors.append(message)
+                        text += "[{0}]".format(message)
+                    except TimeoutError:
+                        message = "{0}. parça: Tanıma isteği zaman aşımına uğradı.".format(i + 1)
+                        errors.append(message)
+                        text += "[{0}]".format(message)
                     except sr.RequestError as e:
-                        text += "[İnternet bağlantısı gerekmektedir; {0}]".format(e)
+                        message = "{0}. parça: Tanıma servisine ulaşılamadı; {1}".format(i + 1, e)
+                        errors.append(message)
+                        text += "[{0}]".format(message)
+                    else:
+                        text += transcript
+                        successful_chunks += 1
+
+        if not successful_chunks:
+            return ConversionResult("failed", text, 0, len(chunks), None, tuple(errors))
 
         dosya_adi = os.path.splitext(self.file_path)[0] + ".txt"
 
@@ -70,7 +105,9 @@ class AudioToTextThread(QtCore.QThread):
 
         with open(dosya_adi, "w") as dosya:
             dosya.write(text)
-        return text
+        status = "success" if successful_chunks == len(chunks) else "partial"
+        return ConversionResult(status, text, successful_chunks, len(chunks),
+                                dosya_adi, tuple(errors))
 
 
 class Ui_Dialog(QtCore.QObject):
@@ -169,11 +206,26 @@ class Ui_Dialog(QtCore.QObject):
             self.thread.progress.connect(self.on_thread_progress, QtCore.Qt.QueuedConnection)
             self.thread.start()
 
-    @QtCore.pyqtSlot(str)
-    def on_thread_done(self, text):
+    @QtCore.pyqtSlot(object)
+    def on_thread_done(self, result):
         self.label_2.setHidden(False)
-        self.label_3.setHidden(False)
-        QMessageBox.information(self.dialog, "İşlem Tamam", "İşlem Tamamlandı.")
+        self.label_3.setHidden(result.output_path is None)
+        self.label_3.setToolTip(result.output_path or "")
+        details = "\n".join(result.errors)
+        if result.status == "success":
+            self.label_2.setText("Dönüştürme işlemi tamamlanmıştır.")
+            self.label_3.setText("Metin dosyası kaydedildi.")
+            QMessageBox.information(self.dialog, "İşlem Tamam",
+                                    "İşlem Tamamlandı.\n{0}".format(result.output_path))
+        elif result.status == "partial":
+            self.label_2.setText("Dönüştürme kısmen tamamlandı ({0}/{1} parça).".format(
+                result.successful_chunks, result.total_chunks))
+            self.label_3.setText("Kısmi metin dosyası kaydedildi.")
+            QMessageBox.warning(self.dialog, "Kısmi Dönüştürme",
+                                "{0}\n{1}\n{2}".format(self.label_2.text(), result.output_path, details))
+        else:
+            self.label_2.setText("Dönüştürme başarısız. Metin kaydedilmedi.")
+            QMessageBox.critical(self.dialog, "Dönüştürme Başarısız", details)
 
     @QtCore.pyqtSlot(str)
     def on_thread_error(self, message):

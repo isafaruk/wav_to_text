@@ -12,6 +12,8 @@ from PyQt5 import QtCore, QtWidgets
 
 import proje
 
+REAL_RECOGNIZE_GOOGLE = proje.sr.Recognizer.recognize_google
+
 
 class ConversionTests(unittest.TestCase):
     @classmethod
@@ -165,6 +167,75 @@ class ConversionTests(unittest.TestCase):
         self.app.processEvents()
         self.messages.information.assert_called_once()
         dialog.close()
+
+    def test_recognition_results_distinguish_success_partial_and_failure(self):
+        self.write_wav(self.source, duration_ms=50100)
+        cases = [
+            (["first", "second"], "success", 2),
+            (["first", proje.sr.RequestError("offline")], "partial", 1),
+            ([proje.sr.UnknownValueError(), "second"], "partial", 1),
+            ([proje.sr.RequestError("offline"), proje.sr.RequestError("offline")], "failed", 0),
+            ([proje.sr.UnknownValueError(), "  "], "failed", 0),
+            (["first", TimeoutError("timed out")], "partial", 1),
+        ]
+        for responses, status, successful in cases:
+            with self.subTest(status=status, responses=responses):
+                self.recognize.side_effect = responses
+                results, errors = self.run_worker()
+                self.assertEqual([], errors)
+                self.assertEqual(1, len(results))
+                result = results[0]
+                self.assertEqual(status, result.status)
+                self.assertEqual(successful, result.successful_chunks)
+                self.assertEqual(2, result.total_chunks)
+                self.assertEqual(2 - successful, len(result.errors))
+                if successful:
+                    self.assertEqual(result.text, Path(result.output_path).read_text())
+                    Path(result.output_path).unlink()
+                else:
+                    self.assertIsNone(result.output_path)
+                    self.assertFalse(self.source.with_suffix(".txt").exists())
+
+    def test_empty_wav_does_not_claim_success_or_write_output(self):
+        self.write_wav(self.source, duration_ms=0)
+        results, errors = self.run_worker()
+        self.assertEqual([], errors)
+        self.assertEqual("failed", results[0].status)
+        self.assertIsNone(results[0].output_path)
+        self.recognize.assert_not_called()
+
+    def test_network_request_receives_timeout_and_timeout_is_failure(self):
+        with patch.object(proje.sr.Recognizer, "recognize_google", REAL_RECOGNIZE_GOOGLE), patch.object(
+            proje.sr.AudioData, "get_flac_data", return_value=b"fake flac"
+        ), patch("speech_recognition.recognizers.google.urlopen", side_effect=TimeoutError) as request:
+            results, errors = self.run_worker()
+        self.assertEqual([], errors)
+        self.assertEqual("failed", results[0].status)
+        self.assertIn("zaman aşımı", results[0].errors[0])
+        self.assertEqual(30, request.call_args.kwargs["timeout"])
+
+    def test_partial_and_failed_results_show_the_correct_message(self):
+        self.write_wav(self.source, duration_ms=50100)
+        for responses, message in [
+            (["first", proje.sr.RequestError("offline")], "warning"),
+            ([proje.sr.RequestError("offline")] * 2, "critical"),
+        ]:
+            with self.subTest(message=message):
+                self.messages.reset_mock()
+                self.recognize.side_effect = responses
+                dialog = QtWidgets.QDialog()
+                ui = proje.Ui_Dialog()
+                ui.setupUi(dialog)
+                ui.path = str(self.source)
+                ui.donustur()
+                self.assertTrue(ui.thread.wait(5000))
+                self.app.processEvents()
+                getattr(self.messages, message).assert_called_once()
+                self.messages.information.assert_not_called()
+                self.assertEqual(message == "critical", ui.label_3.isHidden())
+                self.assertTrue(ui.pushButton.isEnabled())
+                self.assertTrue(ui.pushButton_2.isEnabled())
+                dialog.close()
 
 
 if __name__ == "__main__":
