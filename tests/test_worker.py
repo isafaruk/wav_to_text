@@ -3,6 +3,7 @@ from contextlib import contextmanager, nullcontext
 from unittest.mock import patch
 
 from backend import ConversionResult
+from engines import RecognitionOptions
 from media_converter import MediaConversionError
 from worker import AudioToTextThread
 
@@ -16,9 +17,10 @@ class WorkerTests(unittest.TestCase):
         worker.progress.connect(progress.append)
         worker.error.connect(errors.append)
 
-        def convert(file_path, progress_callback, *, output_source_path):
+        def convert(file_path, progress_callback, *, output_source_path, recognition_options):
             self.assertEqual("prepared.wav", file_path)
             self.assertEqual("audio.wav", output_source_path)
+            self.assertEqual(RecognitionOptions(), recognition_options)
             progress_callback(50)
             progress_callback(100)
             return result
@@ -72,6 +74,24 @@ class WorkerTests(unittest.TestCase):
         ):
             AudioToTextThread("audio.mp3").run()
         self.assertEqual(["audio.mp3"], released)
+
+    def test_selected_engine_options_reach_backend(self):
+        options = RecognitionOptions(engine="faster_whisper", model="base")
+        worker = AudioToTextThread("audio.mp3", options)
+        with patch("worker.prepare_wav", return_value=nullcontext("prepared.wav")), patch(
+            "worker.backend.convert_audio"
+        ) as convert:
+            worker.run()
+        self.assertIs(options, convert.call_args.kwargs["recognition_options"])
+
+    def test_invalid_settings_fail_before_media_preparation(self):
+        worker = AudioToTextThread("audio.mp3", RecognitionOptions(engine="unknown"))
+        errors = []
+        worker.error.connect(errors.append)
+        with patch("worker.prepare_wav") as prepare:
+            worker.run()
+        prepare.assert_not_called()
+        self.assertEqual(1, len(errors))
 
 
 if __name__ == "__main__":

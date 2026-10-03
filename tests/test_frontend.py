@@ -11,6 +11,7 @@ import backend
 import frontend
 from helpers import ConversionTestCase
 from worker import AudioToTextThread
+from engines import ENGINES
 
 
 class FrontendTests(ConversionTestCase):
@@ -25,6 +26,61 @@ class FrontendTests(ConversionTestCase):
     def test_worker_does_not_create_a_message_box(self):
         AudioToTextThread(str(self.source)).run()
         self.assertEqual([], self.messages.mock_calls)
+
+    def test_engine_fields_follow_selection_and_keys_are_cleared_on_switch(self):
+        dialog = QtWidgets.QDialog()
+        ui = frontend.Ui_Dialog()
+        ui.setupUi(dialog)
+        self.assertEqual("google", ui.selected_options().engine)
+        self.assertEqual(len(ENGINES), ui.engineCombo.count())
+        self.assertEqual(QtWidgets.QLineEdit.Password, ui.apiKeyEdit.echoMode())
+        for engine, visible in [
+            ("faster_whisper", {"model", "device"}),
+            ("vosk", {"path"}),
+            ("azure", {"key", "region"}),
+            ("groq", {"model", "key"}),
+            ("openai", {"model", "key"}),
+            ("google", set()),
+        ]:
+            ui.apiKeyEdit.setText("previous-provider-key")
+            ui.engineCombo.setCurrentIndex(ui.engineCombo.findData(engine))
+            self.assertEqual("", ui.apiKeyEdit.text())
+            for name, (label, field) in ui.settingRows.items():
+                self.assertEqual(name not in visible, field.isHidden(), (engine, name))
+                self.assertEqual(field.isHidden(), label.isHidden())
+        dialog.close()
+
+    def test_missing_key_does_not_start_worker_or_disable_settings(self):
+        dialog = QtWidgets.QDialog()
+        ui = frontend.Ui_Dialog()
+        ui.setupUi(dialog)
+        ui.path = str(self.source)
+        ui.engineCombo.setCurrentIndex(ui.engineCombo.findData("groq"))
+        with patch.dict(os.environ, {}, clear=True), patch("frontend.AudioToTextThread") as worker:
+            ui.donustur()
+        worker.assert_not_called()
+        self.messages.critical.assert_called_once()
+        self.assertTrue(ui.engineGroup.isEnabled())
+        dialog.close()
+
+    def test_selected_settings_are_frozen_during_conversion_and_restored(self):
+        dialog = QtWidgets.QDialog()
+        ui = frontend.Ui_Dialog()
+        ui.setupUi(dialog)
+        ui.path = str(self.source)
+        ui.engineCombo.setCurrentIndex(ui.engineCombo.findData("faster_whisper"))
+        ui.modelCombo.setCurrentText("base")
+        with patch("worker.backend.convert_audio", side_effect=RuntimeError("model unavailable")):
+            ui.donustur()
+            self.assertFalse(ui.engineGroup.isEnabled())
+            self.assertEqual("faster_whisper", ui.thread.recognition_options.engine)
+            self.assertEqual("base", ui.thread.recognition_options.model)
+            self.assertTrue(ui.thread.wait(5000))
+            self.app.processEvents()
+        self.messages.critical.assert_called_once()
+        self.assertTrue(ui.engineGroup.isEnabled())
+        self.assertTrue(ui.pushButton_2.isEnabled())
+        dialog.close()
 
     def test_non_wav_input_reaches_preparation_and_recognition(self):
         dialog = QtWidgets.QDialog()

@@ -11,6 +11,8 @@ import speech_recognition as sr
 from pydub import AudioSegment
 from pydub.utils import make_chunks
 
+from engines import RecognitionOptions, recognition_session
+
 REQUEST_TIMEOUT_SECONDS = 30
 
 
@@ -29,6 +31,7 @@ def convert_audio(
     progress_callback: Callable[[int], None] | None = None,
     *,
     output_source_path: str | None = None,
+    recognition_options: RecognitionOptions | None = None,
 ) -> ConversionResult:
     """Convert a WAV file and save its transcript.
 
@@ -37,6 +40,7 @@ def convert_audio(
     errors propagate to the caller. This function runs synchronously.
     For temporary WAV inputs, output_source_path selects the original media
     path whose directory and stem are used for the transcript.
+    recognition_options selects the engine; omitted options preserve Google.
     """
     r = sr.Recognizer()
     r.operation_timeout = REQUEST_TIMEOUT_SECONDS
@@ -50,7 +54,8 @@ def convert_audio(
     text_parts = []
     successful_chunks = 0
     errors = []
-    with TemporaryDirectory(prefix="wav_to_text_") as temp_dir:
+    with recognition_session(r, recognition_options or RecognitionOptions()) as transcribe, \
+            TemporaryDirectory(prefix="wav_to_text_") as temp_dir:
         for i, chunk in enumerate(chunks):
             chunk_name = os.path.join(temp_dir, 'chunk{0}.wav'.format(i + 1))
             with open(chunk_name, "wb") as chunk_file:
@@ -58,7 +63,7 @@ def convert_audio(
             with sr.AudioFile(chunk_name) as source:
                 audio = r.record(source)  # read the entire audio file
                 try:
-                    transcript = r.recognize_google(audio, language='tr-tr').strip()
+                    transcript = transcribe(audio).strip()
                     if not transcript:
                         raise sr.UnknownValueError()
                 except sr.UnknownValueError:
@@ -70,7 +75,7 @@ def convert_audio(
                     errors.append(message)
                     text_parts.append("[{0}]".format(message))
                 except sr.RequestError as e:
-                    message = "{0}. parça: Tanıma servisine ulaşılamadı; {1}".format(i + 1, e)
+                    message = "{0}. parça: Tanıma başarısız; {1}".format(i + 1, e)
                     errors.append(message)
                     text_parts.append("[{0}]".format(message))
                 else:

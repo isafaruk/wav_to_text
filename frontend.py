@@ -4,30 +4,77 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QApplication, QFileDialog, QMessageBox, QStyleFactory
 
 from worker import AudioToTextThread
+from engines import ENGINES, EngineConfigurationError, RecognitionOptions, validate_options
 
 
 class Ui_Dialog(QtCore.QObject):
-    path = ""
     def setupUi(self, Dialog):
         self.dialog = Dialog
+        self.path = ""
         Dialog.setObjectName("Dialog")
-        Dialog.resize(400, 300)
+        Dialog.resize(580, 470)
+        layout = QtWidgets.QVBoxLayout(Dialog)
+        layout.setSpacing(12)
+        file_row = QtWidgets.QHBoxLayout()
         self.label = QtWidgets.QLabel(Dialog)
-        self.label.setGeometry(QtCore.QRect(20, 20, 265, 25))
+        self.label.setWordWrap(True)
         self.label.setObjectName("label")
+        file_row.addWidget(self.label, 1)
+        self.pushButton = QtWidgets.QPushButton(Dialog)
+        self.pushButton.setObjectName("pushButton")
+        file_row.addWidget(self.pushButton)
+        layout.addLayout(file_row)
+
+        self.engineGroup = QtWidgets.QGroupBox("Tanıma motoru", Dialog)
+        form = QtWidgets.QFormLayout(self.engineGroup)
+        self.engineCombo = QtWidgets.QComboBox()
+        for engine_id, spec in ENGINES.items():
+            self.engineCombo.addItem(spec.name, engine_id)
+        form.addRow("Servis / motor", self.engineCombo)
+        self.engineHelp = QtWidgets.QLabel()
+        self.engineHelp.setWordWrap(True)
+        form.addRow(self.engineHelp)
+        self.modelCombo = QtWidgets.QComboBox()
+        self.deviceCombo = QtWidgets.QComboBox()
+        self.deviceCombo.addItem("CPU (işlemci)", "cpu")
+        self.deviceCombo.addItem("NVIDIA GPU (CUDA kurulumu gerekir)", "cuda")
+        self.apiKeyEdit = QtWidgets.QLineEdit()
+        self.apiKeyEdit.setEchoMode(QtWidgets.QLineEdit.Password)
+        self.regionEdit = QtWidgets.QLineEdit()
+        self.regionEdit.setPlaceholderText("Örn. westeurope veya AZURE_SPEECH_REGION")
+        self.modelPathEdit = QtWidgets.QLineEdit()
+        self.modelPathEdit.setPlaceholderText("Açılmış Türkçe model klasörü veya VOSK_MODEL_PATH")
+        model_path_row = QtWidgets.QWidget()
+        path_layout = QtWidgets.QHBoxLayout(model_path_row)
+        path_layout.setContentsMargins(0, 0, 0, 0)
+        path_layout.addWidget(self.modelPathEdit)
+        self.modelBrowseButton = QtWidgets.QPushButton("Klasör seç")
+        self.modelBrowseButton.clicked.connect(self.select_model_directory)
+        path_layout.addWidget(self.modelBrowseButton)
+        self.settingRows = {}
+        for name, title, widget in (
+            ("model", "Model", self.modelCombo),
+            ("device", "Çalışacağı aygıt", self.deviceCombo),
+            ("key", "API anahtarı", self.apiKeyEdit),
+            ("region", "Azure bölgesi", self.regionEdit),
+            ("path", "Vosk modeli", model_path_row),
+        ):
+            label = QtWidgets.QLabel(title)
+            form.addRow(label, widget)
+            self.settingRows[name] = (label, widget)
+        layout.addWidget(self.engineGroup)
+        self.engineCombo.currentIndexChanged.connect(self.on_engine_changed)
+        self.on_engine_changed(0)
+
         self.label_2 = QtWidgets.QLabel(Dialog)
-        self.label_2.setGeometry(QtCore.QRect(20, 200, 355, 25))
+        self.label_2.setWordWrap(True)
         self.label_2.setAlignment(QtCore.Qt.AlignCenter)
         self.label_2.setObjectName("label_2")
         self.label_3 = QtWidgets.QLabel(Dialog)
-        self.label_3.setGeometry(QtCore.QRect(20, 240, 355, 25))
         self.label_3.setAlignment(QtCore.Qt.AlignCenter)
         self.label_3.setObjectName("label_3")
-        self.pushButton = QtWidgets.QPushButton(Dialog)
-        self.pushButton.setGeometry(QtCore.QRect(300, 20, 75, 25))
-        self.pushButton.setObjectName("pushButton")
         self.pushButton_2 = QtWidgets.QPushButton(Dialog)
-        self.pushButton_2.setGeometry(QtCore.QRect(140, 70, 121, 61))
+        self.pushButton_2.setMinimumHeight(44)
         font = QtGui.QFont()
         font.setPointSize(12)
         font.setBold(True)
@@ -35,9 +82,13 @@ class Ui_Dialog(QtCore.QObject):
         self.pushButton_2.setFont(font)
         self.pushButton_2.setObjectName("pushButton_2")
         self.progressBar = QtWidgets.QProgressBar(Dialog)
-        self.progressBar.setGeometry(QtCore.QRect(20, 150, 355, 25))
         self.progressBar.setProperty("value", 0)
         self.progressBar.setObjectName("progressBar")
+        layout.addWidget(self.pushButton_2)
+        layout.addWidget(self.progressBar)
+        layout.addWidget(self.label_2)
+        layout.addWidget(self.label_3)
+        layout.addStretch()
         self.retranslateUi(Dialog)
         QtCore.QMetaObject.connectSlotsByName(Dialog)
         QApplication.setStyle(QStyleFactory.create("Fusion"))
@@ -57,6 +108,43 @@ class Ui_Dialog(QtCore.QObject):
         self.label_2.setHidden(True)
         self.label_3.setHidden(True)
         self.pushButton_2.setEnabled(False)
+
+    @QtCore.pyqtSlot(int)
+    def on_engine_changed(self, index):
+        engine = self.engineCombo.currentData()
+        spec = ENGINES[engine]
+        self.engineHelp.setText(spec.description)
+        self.modelCombo.clear()
+        self.modelCombo.addItems(spec.models)
+        # A key entered for one provider must not be sent to a different provider.
+        self.apiKeyEdit.clear()
+        self.apiKeyEdit.setPlaceholderText("Anahtar veya {0} ortam değişkeni".format(spec.key_env))
+        visible = {
+            "model": bool(spec.models),
+            "device": engine in ("faster_whisper", "whisper"),
+            "key": bool(spec.key_env),
+            "region": engine == "azure",
+            "path": engine == "vosk",
+        }
+        for name, widgets in self.settingRows.items():
+            for widget in widgets:
+                widget.setVisible(visible[name])
+
+    def select_model_directory(self):
+        directory = QFileDialog.getExistingDirectory(self.dialog, "Türkçe Vosk model klasörü")
+        if directory:
+            self.modelPathEdit.setText(directory)
+
+    def selected_options(self):
+        engine = self.engineCombo.currentData()
+        return RecognitionOptions(
+            engine=engine,
+            model=self.modelCombo.currentText(),
+            device=self.deviceCombo.currentData() if engine in ("faster_whisper", "whisper") else "cpu",
+            api_key=self.apiKeyEdit.text() if ENGINES[engine].key_env else "",
+            region=self.regionEdit.text() if engine == "azure" else "",
+            model_path=self.modelPathEdit.text() if engine == "vosk" else "",
+        )
 
     def pushButton_handler(self):
         self.progressBar.setValue(0)
@@ -88,12 +176,19 @@ class Ui_Dialog(QtCore.QObject):
             msg.setWindowTitle("Hata")
             msg.exec_()
         else:
+            options = self.selected_options()
+            try:
+                validate_options(options)
+            except EngineConfigurationError as exc:
+                QMessageBox.critical(self.dialog, "Motor Ayarları", str(exc))
+                return
             self.progressBar.setValue(0)
             self.label_2.setHidden(True)
             self.label_3.setHidden(True)
             self.pushButton.setEnabled(False)
             self.pushButton_2.setEnabled(False)
-            self.thread = AudioToTextThread(self.path)
+            self.engineGroup.setEnabled(False)
+            self.thread = AudioToTextThread(self.path, options)
             self.thread.done.connect(self.on_thread_done, QtCore.Qt.QueuedConnection)
             self.thread.error.connect(self.on_thread_error, QtCore.Qt.QueuedConnection)
             self.thread.finished.connect(self.on_thread_finished, QtCore.Qt.QueuedConnection)
@@ -130,6 +225,7 @@ class Ui_Dialog(QtCore.QObject):
 
     @QtCore.pyqtSlot()
     def on_thread_finished(self):
+        self.engineGroup.setEnabled(True)
         self.pushButton.setEnabled(True)
         self.pushButton_2.setEnabled(bool(self.path))
 
