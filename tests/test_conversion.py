@@ -84,6 +84,86 @@ class ConversionTests(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual([self.app.thread()], message_threads)
         self.assertFalse(ui.label_2.isHidden())
+        self.assertTrue(ui.pushButton.isEnabled())
+        self.assertTrue(ui.pushButton_2.isEnabled())
+        dialog.close()
+
+    def run_worker(self):
+        worker = proje.AudioToTextThread(str(self.source))
+        results, errors = [], []
+        worker.done.connect(results.append)
+        worker.error.connect(errors.append)
+        worker.run()
+        return results, errors
+
+    def test_corrupt_wav_reports_error(self):
+        self.source.write_bytes(b"not a wav")
+        results, errors = self.run_worker()
+        self.assertEqual([], results)
+        self.assertEqual(1, len(errors))
+        self.assertFalse(self.source.with_suffix(".txt").exists())
+
+    def test_export_failure_cleans_temporary_directory(self):
+        directories = []
+
+        def temporary_directory(**kwargs):
+            directory = tempfile.TemporaryDirectory(**kwargs)
+            directories.append(Path(directory.name))
+            return directory
+
+        with patch("proje.TemporaryDirectory", side_effect=temporary_directory), patch.object(
+            proje.AudioSegment, "export", side_effect=PermissionError("export denied")
+        ):
+            results, errors = self.run_worker()
+        self.assertEqual([], results)
+        self.assertIn("export denied", errors[0])
+        self.assertTrue(directories)
+        self.assertTrue(all(not path.exists() for path in directories))
+
+    def test_output_permission_error_is_reported(self):
+        real_open = open
+
+        def restricted_open(path, mode="r", *args, **kwargs):
+            if mode == "w":
+                raise PermissionError("output denied")
+            return real_open(path, mode, *args, **kwargs)
+
+        with patch("proje.open", side_effect=restricted_open):
+            results, errors = self.run_worker()
+        self.assertEqual([], results)
+        self.assertIn("output denied", errors[0])
+
+    def test_cleanup_error_is_reported(self):
+        class FailingCleanup(tempfile.TemporaryDirectory):
+            def cleanup(self):
+                super().cleanup()
+                raise PermissionError("cleanup denied")
+
+        with patch("proje.TemporaryDirectory", FailingCleanup):
+            results, errors = self.run_worker()
+        self.assertEqual([], results)
+        self.assertIn("cleanup denied", errors[0])
+
+    def test_file_error_restores_buttons_and_allows_retry(self):
+        dialog = QtWidgets.QDialog()
+        ui = proje.Ui_Dialog()
+        ui.setupUi(dialog)
+        ui.path = str(self.source)
+        self.source.unlink()
+        ui.donustur()
+        self.assertTrue(ui.thread.wait(5000))
+        self.app.processEvents()
+        self.messages.critical.assert_called_once()
+        self.messages.information.assert_not_called()
+        self.assertTrue(ui.pushButton.isEnabled())
+        self.assertTrue(ui.pushButton_2.isEnabled())
+        self.assertTrue(ui.label_2.isHidden())
+        self.assertTrue(ui.label_3.isHidden())
+        self.write_wav(self.source)
+        ui.donustur()
+        self.assertTrue(ui.thread.wait(5000))
+        self.app.processEvents()
+        self.messages.information.assert_called_once()
         dialog.close()
 
 

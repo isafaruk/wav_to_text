@@ -20,6 +20,7 @@ os.getcwd()
 
 class AudioToTextThread(QtCore.QThread):
     done = QtCore.pyqtSignal(str)
+    error = QtCore.pyqtSignal(str)
     progress = QtCore.pyqtSignal(int)
 
     def __init__(self, file_path):
@@ -27,8 +28,17 @@ class AudioToTextThread(QtCore.QThread):
         self.file_path = file_path
 
     def run(self):
+        try:
+            text = self._convert()
+        except Exception as exc:
+            self.error.emit("Dönüştürme tamamlanamadı: {0}".format(exc))
+        else:
+            self.done.emit(text)
+
+    def _convert(self):
         r = sr.Recognizer()
-        myaudio = AudioSegment.from_file(self.file_path, 'wav')
+        with open(self.file_path, "rb") as input_file:
+            myaudio = AudioSegment.from_file(input_file, 'wav')
         chunk_length_ms = 50000  # pydub calculates in milliseconds
         chunks = make_chunks(myaudio, chunk_length_ms)
         adet = int(len(myaudio) / chunk_length_ms) + 1
@@ -60,9 +70,7 @@ class AudioToTextThread(QtCore.QThread):
 
         with open(dosya_adi, "w") as dosya:
             dosya.write(text)
-        dosya.close()
-
-        self.done.emit(text)
+        return text
 
 
 class Ui_Dialog(QtCore.QObject):
@@ -149,19 +157,34 @@ class Ui_Dialog(QtCore.QObject):
             msg.setWindowTitle("Hata")
             msg.exec_()
         else:
+            self.progressBar.setValue(0)
+            self.label_2.setHidden(True)
+            self.label_3.setHidden(True)
             self.pushButton.setEnabled(False)
+            self.pushButton_2.setEnabled(False)
             self.thread = AudioToTextThread(self.path)
             self.thread.done.connect(self.on_thread_done, QtCore.Qt.QueuedConnection)
+            self.thread.error.connect(self.on_thread_error, QtCore.Qt.QueuedConnection)
+            self.thread.finished.connect(self.on_thread_finished, QtCore.Qt.QueuedConnection)
             self.thread.progress.connect(self.on_thread_progress, QtCore.Qt.QueuedConnection)
             self.thread.start()
-            self.pushButton_2.setEnabled(False)
 
     @QtCore.pyqtSlot(str)
     def on_thread_done(self, text):
         self.label_2.setHidden(False)
         self.label_3.setHidden(False)
-        self.pushButton.setEnabled(True)
         QMessageBox.information(self.dialog, "İşlem Tamam", "İşlem Tamamlandı.")
+
+    @QtCore.pyqtSlot(str)
+    def on_thread_error(self, message):
+        self.label_2.setHidden(True)
+        self.label_3.setHidden(True)
+        QMessageBox.critical(self.dialog, "Dönüştürme Hatası", message)
+
+    @QtCore.pyqtSlot()
+    def on_thread_finished(self):
+        self.pushButton.setEnabled(True)
+        self.pushButton_2.setEnabled(bool(self.path))
 
     @QtCore.pyqtSlot(int)
     def on_thread_progress(self, value):
