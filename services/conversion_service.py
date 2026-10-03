@@ -6,9 +6,9 @@ from pathlib import Path
 from threading import Lock, Thread
 from time import monotonic
 
-from backend import convert_audio
-from engines import ENGINES, RecognitionOptions, validate_options
-from media_converter import prepare_wav
+from core.backend import convert_audio
+from core.engines import ENGINES, RecognitionOptions, validate_options
+from core.media_converter import prepare_wav
 
 
 class ConversionService:

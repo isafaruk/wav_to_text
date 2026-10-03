@@ -3,8 +3,8 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QApplication, QFileDialog, QMessageBox, QStyleFactory
 
-from worker import AudioToTextThread
-from engines import ENGINES, EngineConfigurationError, RecognitionOptions, validate_options
+from eski.worker import AudioToTextThread
+from core.engines import ENGINES, EngineConfigurationError, RecognitionOptions, validate_options
 
 
 class Ui_Dialog(QtCore.QObject):

@@ -2,10 +2,10 @@ import unittest
 from contextlib import contextmanager, nullcontext
 from unittest.mock import patch
 
-from backend import ConversionResult
-from engines import RecognitionOptions
-from media_converter import MediaConversionError
-from worker import AudioToTextThread
+from core.backend import ConversionResult
+from core.engines import RecognitionOptions
+from core.media_converter import MediaConversionError
+from eski.worker import AudioToTextThread
 
 
 class WorkerTests(unittest.TestCase):
@@ -25,8 +25,8 @@ class WorkerTests(unittest.TestCase):
             progress_callback(100)
             return result
 
-        with patch("worker.prepare_wav", return_value=nullcontext("prepared.wav")), patch(
-            "worker.backend.convert_audio", side_effect=convert
+        with patch("eski.worker.prepare_wav", return_value=nullcontext("prepared.wav")), patch(
+            "eski.worker.backend.convert_audio", side_effect=convert
         ):
             worker.run()
         self.assertEqual([50, 100], progress)
@@ -38,8 +38,8 @@ class WorkerTests(unittest.TestCase):
         results, errors = [], []
         worker.done.connect(results.append)
         worker.error.connect(errors.append)
-        with patch("worker.prepare_wav", return_value=nullcontext("prepared.wav")), patch(
-            "worker.backend.convert_audio", side_effect=PermissionError("output denied")
+        with patch("eski.worker.prepare_wav", return_value=nullcontext("prepared.wav")), patch(
+            "eski.worker.backend.convert_audio", side_effect=PermissionError("output denied")
         ):
             worker.run()
         self.assertEqual([], results)
@@ -51,8 +51,8 @@ class WorkerTests(unittest.TestCase):
         results, errors = [], []
         worker.done.connect(results.append)
         worker.error.connect(errors.append)
-        with patch("worker.prepare_wav", side_effect=MediaConversionError("no audio")), patch(
-            "worker.backend.convert_audio"
+        with patch("eski.worker.prepare_wav", side_effect=MediaConversionError("no audio")), patch(
+            "eski.worker.backend.convert_audio"
         ) as convert:
             worker.run()
         convert.assert_not_called()
@@ -69,8 +69,8 @@ class WorkerTests(unittest.TestCase):
             finally:
                 released.append(file_path)
 
-        with patch("worker.prepare_wav", prepare), patch(
-            "worker.backend.convert_audio", side_effect=PermissionError("output denied")
+        with patch("eski.worker.prepare_wav", prepare), patch(
+            "eski.worker.backend.convert_audio", side_effect=PermissionError("output denied")
         ):
             AudioToTextThread("audio.mp3").run()
         self.assertEqual(["audio.mp3"], released)
@@ -78,8 +78,8 @@ class WorkerTests(unittest.TestCase):
     def test_selected_engine_options_reach_backend(self):
         options = RecognitionOptions(engine="faster_whisper", model="base")
         worker = AudioToTextThread("audio.mp3", options)
-        with patch("worker.prepare_wav", return_value=nullcontext("prepared.wav")), patch(
-            "worker.backend.convert_audio"
+        with patch("eski.worker.prepare_wav", return_value=nullcontext("prepared.wav")), patch(
+            "eski.worker.backend.convert_audio"
         ) as convert:
             worker.run()
         self.assertIs(options, convert.call_args.kwargs["recognition_options"])
@@ -88,7 +88,7 @@ class WorkerTests(unittest.TestCase):
         worker = AudioToTextThread("audio.mp3", RecognitionOptions(engine="unknown"))
         errors = []
         worker.error.connect(errors.append)
-        with patch("worker.prepare_wav") as prepare:
+        with patch("eski.worker.prepare_wav") as prepare:
             worker.run()
         prepare.assert_not_called()
         self.assertEqual(1, len(errors))

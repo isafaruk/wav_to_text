@@ -10,7 +10,7 @@ class LocalEngineError(RuntimeError):
 
 def _serve(connection, options):
     # Import here: the spawned interpreter must not import a GUI toolkit.
-    from engines import _local_whisper, _vosk
+    from core.engines import _local_whisper, _vosk
 
     try:
         transcribe = _vosk(options) if options.engine == "vosk" else _local_whisper(options)

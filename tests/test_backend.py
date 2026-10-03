@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from pydub.exceptions import CouldntDecodeError
 
-import backend
+from core import backend
 from helpers import ConversionTestCase
 
 REAL_RECOGNIZE_GOOGLE = backend.sr.Recognizer.recognize_google
@@ -67,7 +67,7 @@ class BackendTests(ConversionTestCase):
             directories.append(Path(directory.name))
             return directory
 
-        with patch("backend.TemporaryDirectory", side_effect=temporary_directory), patch.object(
+        with patch("core.backend.TemporaryDirectory", side_effect=temporary_directory), patch.object(
             backend.AudioSegment, "export", side_effect=PermissionError("export denied")
         ):
             with self.assertRaisesRegex(PermissionError, "export denied"):
@@ -83,7 +83,7 @@ class BackendTests(ConversionTestCase):
                 raise PermissionError("output denied")
             return real_open(path, mode, *args, **kwargs)
 
-        with patch("backend.open", side_effect=restricted_open):
+        with patch("core.backend.open", side_effect=restricted_open):
             with self.assertRaisesRegex(PermissionError, "output denied"):
                 backend.convert_audio(str(self.source))
 
@@ -93,7 +93,7 @@ class BackendTests(ConversionTestCase):
                 super().cleanup()
                 raise PermissionError("cleanup denied")
 
-        with patch("backend.TemporaryDirectory", FailingCleanup):
+        with patch("core.backend.TemporaryDirectory", FailingCleanup):
             with self.assertRaisesRegex(PermissionError, "cleanup denied"):
                 backend.convert_audio(str(self.source))
 
@@ -139,7 +139,7 @@ class BackendTests(ConversionTestCase):
                 kwargs.setdefault("encoding", "cp1254")
             return real_open(path, mode, *args, **kwargs)
 
-        with patch("backend.open", side_effect=ansi_open):
+        with patch("core.backend.open", side_effect=ansi_open):
             result = backend.convert_audio(str(self.source))
 
         self.assertEqual("success", result.status)

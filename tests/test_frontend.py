@@ -7,11 +7,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5 import QtCore, QtWidgets
 
-import backend
-import pyqt_frontend as frontend
+from core import backend
+from eski import pyqt_frontend as frontend
 from helpers import ConversionTestCase
-from worker import AudioToTextThread
-from engines import ENGINES
+from eski.worker import AudioToTextThread
+from core.engines import ENGINES
 
 
 class FrontendTests(ConversionTestCase):
@@ -21,7 +21,7 @@ class FrontendTests(ConversionTestCase):
 
     def setUp(self):
         super().setUp()
-        self.messages = self.enterContext(patch("pyqt_frontend.QMessageBox"))
+        self.messages = self.enterContext(patch("eski.pyqt_frontend.QMessageBox"))
 
     def test_worker_does_not_create_a_message_box(self):
         AudioToTextThread(str(self.source)).run()
@@ -56,7 +56,7 @@ class FrontendTests(ConversionTestCase):
         ui.setupUi(dialog)
         ui.path = str(self.source)
         ui.engineCombo.setCurrentIndex(ui.engineCombo.findData("groq"))
-        with patch.dict(os.environ, {}, clear=True), patch("pyqt_frontend.AudioToTextThread") as worker:
+        with patch.dict(os.environ, {}, clear=True), patch("eski.pyqt_frontend.AudioToTextThread") as worker:
             ui.donustur()
         worker.assert_not_called()
         self.messages.critical.assert_called_once()
@@ -70,7 +70,7 @@ class FrontendTests(ConversionTestCase):
         ui.path = str(self.source)
         ui.engineCombo.setCurrentIndex(ui.engineCombo.findData("faster_whisper"))
         ui.modelCombo.setCurrentText("base")
-        with patch("worker.backend.convert_audio", side_effect=RuntimeError("model unavailable")):
+        with patch("eski.worker.backend.convert_audio", side_effect=RuntimeError("model unavailable")):
             ui.donustur()
             self.assertFalse(ui.engineGroup.isEnabled())
             self.assertEqual("faster_whisper", ui.thread.recognition_options.engine)
@@ -87,7 +87,7 @@ class FrontendTests(ConversionTestCase):
         ui = frontend.Ui_Dialog()
         ui.setupUi(dialog)
         ui.path = str(self.root / "video.MP4")
-        with patch("worker.prepare_wav", return_value=nullcontext(str(self.source))) as prepare:
+        with patch("eski.worker.prepare_wav", return_value=nullcontext(str(self.source))) as prepare:
             ui.donustur()
             self.assertTrue(ui.thread.wait(5000))
             self.app.processEvents()
@@ -102,7 +102,7 @@ class FrontendTests(ConversionTestCase):
         dialog = QtWidgets.QDialog()
         ui = frontend.Ui_Dialog()
         ui.setupUi(dialog)
-        with patch("pyqt_frontend.QFileDialog.getOpenFileName", return_value=("", "")):
+        with patch("eski.pyqt_frontend.QFileDialog.getOpenFileName", return_value=("", "")):
             ui.pushButton_handler()
         self.assertFalse(ui.pushButton_2.isEnabled())
         dialog.close()

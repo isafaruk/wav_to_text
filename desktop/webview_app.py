@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from threading import Lock, Thread
 
-from conversion_service import ConversionService
+from services.conversion_service import ConversionService
 
 
 class DesktopApi:

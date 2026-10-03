@@ -2,9 +2,9 @@
 
 from PyQt5 import QtCore
 
-import backend
-from media_converter import prepare_wav
-from engines import RecognitionOptions, validate_options
+from core import backend
+from core.media_converter import prepare_wav
+from core.engines import RecognitionOptions, validate_options
 
 
 class AudioToTextThread(QtCore.QThread):

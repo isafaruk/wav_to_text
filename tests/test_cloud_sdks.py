@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import speech_recognition as sr
 
-from engines import RecognitionOptions, recognition_session
+from core.engines import RecognitionOptions, recognition_session
 
 
 @unittest.skipUnless(all(find_spec(name) for name in ("openai", "groq", "httpx")),

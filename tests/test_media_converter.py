@@ -5,9 +5,9 @@ import unittest
 from unittest.mock import patch
 import wave
 
-import media_converter
+from core import media_converter
 from helpers import ConversionTestCase
-from worker import AudioToTextThread
+from eski.worker import AudioToTextThread
 
 
 class MediaConverterTests(ConversionTestCase):
@@ -46,7 +46,7 @@ class MediaConverterTests(ConversionTestCase):
     def test_existing_pcm_wav_is_used_without_ffmpeg(self):
         source = self.source.rename(self.source.with_suffix(".WAV"))
         original = source.read_bytes()
-        with patch("media_converter.get_ffmpeg_exe") as locate:
+        with patch("core.media_converter.get_ffmpeg_exe") as locate:
             with media_converter.prepare_wav(source) as path:
                 self.assertEqual(source, Path(path))
         locate.assert_not_called()
@@ -92,7 +92,7 @@ class MediaConverterTests(ConversionTestCase):
                     directories.append(Path(directory.name))
                     return directory
 
-                with patch("media_converter.TemporaryDirectory", side_effect=temporary_directory):
+                with patch("core.media_converter.TemporaryDirectory", side_effect=temporary_directory):
                     with self.assertRaises(media_converter.MediaConversionError):
                         with media_converter.prepare_wav(source):
                             self.fail("Invalid media must not reach recognition")
@@ -119,8 +119,8 @@ class MediaConverterTests(ConversionTestCase):
             destination.write_bytes(b"partial wav")
             raise subprocess.TimeoutExpired(command, kwargs["timeout"])
 
-        with patch("media_converter.get_ffmpeg_exe", return_value="ffmpeg"), patch(
-            "media_converter.subprocess.run", side_effect=timeout
+        with patch("core.media_converter.get_ffmpeg_exe", return_value="ffmpeg"), patch(
+            "core.media_converter.subprocess.run", side_effect=timeout
         ):
             with self.assertRaisesRegex(media_converter.MediaConversionError, "zaman"):
                 with media_converter.prepare_wav(source):
@@ -131,7 +131,7 @@ class MediaConverterTests(ConversionTestCase):
     def test_missing_converter_reports_setup_instructions(self):
         source = self.root / "recording.mp3"
         source.write_bytes(b"fake mp3")
-        with patch("media_converter.get_ffmpeg_exe", side_effect=RuntimeError("missing")):
+        with patch("core.media_converter.get_ffmpeg_exe", side_effect=RuntimeError("missing")):
             with self.assertRaisesRegex(media_converter.MediaConversionError, "requirements.txt"):
                 with media_converter.prepare_wav(source):
                     self.fail("Missing converter must not reach recognition")

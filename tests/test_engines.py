@@ -7,9 +7,9 @@ from unittest.mock import MagicMock, patch
 
 import speech_recognition as sr
 
-import backend
-import engines
-from engines import EngineConfigurationError, RecognitionOptions, recognition_session, validate_options
+from core import backend
+from core import engines
+from core.engines import EngineConfigurationError, RecognitionOptions, recognition_session, validate_options
 from helpers import ConversionTestCase
 
 
@@ -27,10 +27,10 @@ class EngineTests(ConversionTestCase):
             recognize = engines._vosk(options) if options.engine == "vosk" else engines._local_whisper(options)
             yield lambda audio: recognize(audio, progress_callback=progress_callback)
 
-        self.enterContext(patch("engines.local_session", model_session))
+        self.enterContext(patch("core.engines.local_session", model_session))
 
     def test_google_stays_default_without_optional_imports(self):
-        with patch("engines.import_module") as load:
+        with patch("core.engines.import_module") as load:
             result = backend.convert_audio(str(self.source))
         self.assertEqual("success", result.status)
         self.recognize.assert_called_once()
@@ -38,7 +38,7 @@ class EngineTests(ConversionTestCase):
         load.assert_not_called()
 
     def test_missing_optional_package_explains_installation(self):
-        with patch("engines.import_module", side_effect=ImportError), self.assertRaisesRegex(
+        with patch("core.engines.import_module", side_effect=ImportError), self.assertRaisesRegex(
             EngineConfigurationError, "requirements.txt"
         ), recognition_session(self.recognizer, RecognitionOptions(engine="faster_whisper")):
             self.fail("An unavailable engine must not start recognition")
@@ -80,9 +80,9 @@ class EngineTests(ConversionTestCase):
                   SimpleNamespace(start=70, end=120, text=" ikinci ")]),
             SimpleNamespace(duration=120.1))
         progress = []
-        with patch("engines.import_module", return_value=module), patch(
-            "engines._audio_array", return_value="samples"
-        ) as array, patch("backend.AudioSegment.from_file") as decode, patch("engines.os.cpu_count", return_value=8):
+        with patch("core.engines.import_module", return_value=module), patch(
+            "core.engines._audio_array", return_value="samples"
+        ) as array, patch("core.backend.AudioSegment.from_file") as decode, patch("core.engines.os.cpu_count", return_value=8):
             result = backend.convert_audio(str(self.source), progress.append, recognition_options=RecognitionOptions(
                 engine="faster_whisper", model="base"))
         module.WhisperModel.assert_called_once_with("base", device="cpu", compute_type="int8", cpu_threads=4)
@@ -98,8 +98,8 @@ class EngineTests(ConversionTestCase):
     def test_original_whisper_is_loaded_once_and_uses_float32_on_cpu(self):
         module = MagicMock()
         module.load_model.return_value.transcribe.return_value = {"text": "merhaba"}
-        with patch("engines.import_module", return_value=module), patch(
-            "engines._audio_array", return_value="samples"
+        with patch("core.engines.import_module", return_value=module), patch(
+            "core.engines._audio_array", return_value="samples"
         ), recognition_session(self.recognizer, RecognitionOptions(engine="whisper")) as transcribe:
             self.assertEqual("merhaba", transcribe(self.audio))
             transcribe(self.audio)
@@ -110,7 +110,7 @@ class EngineTests(ConversionTestCase):
     def test_model_load_error_is_actionable(self):
         module = MagicMock()
         module.WhisperModel.side_effect = RuntimeError("incompatible CPU")
-        with patch("engines.import_module", return_value=module), self.assertRaisesRegex(
+        with patch("core.engines.import_module", return_value=module), self.assertRaisesRegex(
             EngineConfigurationError, "daha küçük bir model"
         ), recognition_session(self.recognizer, RecognitionOptions(engine="faster_whisper")):
             self.fail("The model did not load")
@@ -123,8 +123,8 @@ class EngineTests(ConversionTestCase):
                 {"start": 0, "end": 1, "text": "ilk"},
                 {"start": 60, "end": 60.1, "text": "son"},
             ]}
-        with patch("engines.import_module", return_value=module), patch(
-            "engines._audio_array", return_value="samples"
+        with patch("core.engines.import_module", return_value=module), patch(
+            "core.engines._audio_array", return_value="samples"
         ) as array:
             result = backend.convert_audio(str(self.source), recognition_options=RecognitionOptions(engine="whisper"))
         audio = array.call_args.args[0]
@@ -141,7 +141,7 @@ class EngineTests(ConversionTestCase):
         kaldi.FinalResult.return_value = json.dumps({"text": "son"})
         audio = sr.AudioData(b"\x00\x00" * 3000, 16000, 2)
         options = RecognitionOptions(engine="vosk", model_path=str(self.root))
-        with patch("engines.import_module", return_value=module), recognition_session(
+        with patch("core.engines.import_module", return_value=module), recognition_session(
             self.recognizer, options
         ) as transcribe:
             self.assertEqual("ilk ilk son", transcribe(audio))
@@ -168,7 +168,7 @@ class EngineTests(ConversionTestCase):
         kaldi.Result.return_value = json.dumps({"text": "ilk"})
         kaldi.FinalResult.return_value = json.dumps({"text": "son"})
         progress = []
-        with patch("engines.import_module", return_value=module):
+        with patch("core.engines.import_module", return_value=module):
             result = backend.convert_audio(str(self.source), progress.append, recognition_options=RecognitionOptions(
                 engine="vosk", model_path=str(self.root)))
         module.KaldiRecognizer.assert_called_once_with(module.Model.return_value, 16000)
@@ -194,8 +194,8 @@ class EngineTests(ConversionTestCase):
                 client.audio.transcriptions.create.return_value = SimpleNamespace(text="merhaba")
                 options = RecognitionOptions(engine=engine, model=engines.ENGINES[engine].models[-1])
                 with patch.dict(os.environ, {engines.ENGINES[engine].key_env: "env-key"}), patch(
-                    "engines.import_module", return_value=sdk
-                ), patch("engines.time.sleep") as sleep, patch("engines.time.monotonic", return_value=1), recognition_session(
+                    "core.engines.import_module", return_value=sdk
+                ), patch("core.engines.time.sleep") as sleep, patch("core.engines.time.monotonic", return_value=1), recognition_session(
                     self.recognizer, options
                 ) as transcribe:
                     self.assertEqual("merhaba", transcribe(self.audio))
@@ -222,8 +222,8 @@ class EngineTests(ConversionTestCase):
                     error.status_code = code
                     client = getattr(sdk, client_name).return_value.__enter__.return_value
                     client.audio.transcriptions.create.side_effect = [SimpleNamespace(text="ilk"), error]
-                    with patch("engines.import_module", return_value=sdk), patch("engines.time.sleep"), patch(
-                        "audio_policy.MAX_UPLOAD_BYTES", 1_600_044
+                    with patch("core.engines.import_module", return_value=sdk), patch("core.engines.time.sleep"), patch(
+                        "core.audio_policy.MAX_UPLOAD_BYTES", 1_600_044
                     ):
                         result = backend.convert_audio(str(self.source), recognition_options=RecognitionOptions(
                             engine=engine, api_key="secret-key"))

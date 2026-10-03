@@ -1,11 +1,11 @@
-"""Start the WebView2 desktop application; pyqt_app.py launches the old UI."""
+"""Start the WebView2 desktop application; python -m eski.pyqt_app launches the old UI."""
 
 import sys
 from multiprocessing import freeze_support
 
 
 def main():
-    from webview_app import main as start_webview
+    from desktop.webview_app import main as start_webview
     return start_webview()
 
 

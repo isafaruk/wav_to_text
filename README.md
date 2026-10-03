@@ -14,10 +14,10 @@ Python ses işleme kodu arayüzden bağımsızdır. Bir web sitesi ya da Flutter
 istemcisi için ileride bu servis katmanına ayrı bir bağlantı katmanı eklenebilir;
 şimdilik yalnızca masaüstü uygulaması çalışır.
 
-Eski PyQt arayüzü `pyqt_frontend.py` dosyasında korunur:
+Eski PyQt arayüzü `eski/pyqt_frontend.py` dosyasında korunur:
 
 ```shell
-python pyqt_app.py
+python -m eski.pyqt_app
 ```
 
 `requirements.txt` artık tüm tanıma motorlarını, yeni WebView arayüzünü ve
@@ -212,28 +212,28 @@ Kodun sorumlulukları ayrı dosyalarda tutulur:
 
 | Dosya | Sorumluluk |
 | --- | --- |
-| `backend.py` | WAV okuma, parçalama, konuşma tanıma, geçici dosyalar ve metni kaydetme. PyQt bağımlılığı yoktur. |
-| `audio_policy.py` | Motorlara göre istek süresi, yükleme boyutu ve ağ zaman aşımı sınırları. |
-| `transcript_format.py` | Ses parçalama yönteminden bağımsız paragraf düzeni. |
-| `engines.py` | Motor seçenekleri, ayar kontrolü, yerel model/bulut istemcisi yükleme ve Türkçe tanıma. PyQt bağımlılığı yoktur. |
-| `local_engine_process.py` | Yerel modelleri GUI'den ayrı süreçte çalıştırır, çökme kodunu okunabilir hataya çevirir. |
-| `audio_runtime.py` | Pydub'ı paketle gelen FFmpeg'e yönlendirir. |
-| `media_converter.py` | Ses/video dosyasını geçici PCM WAV'a hazırlar ve geçici dosyaları temizler. PyQt bağımlılığı yoktur. |
-| `conversion_service.py` | Arayüz bağımsız iş yönetimi; motor listesi, başlatma ve düz veri olarak durum/sonuç sunar. |
-| `webview_app.py` | Web arayüzünü Python servisine bağlar; masaüstü dosya/klasör diyaloglarını yönetir. |
-| `web_ui/` | HTML, CSS ve JavaScript arayüzü; harici CDN veya font indirmesi yoktur. |
+| `core/backend.py` | WAV okuma, parçalama, konuşma tanıma, geçici dosyalar ve metni kaydetme. PyQt bağımlılığı yoktur. |
+| `core/audio_policy.py` | Motorlara göre istek süresi, yükleme boyutu ve ağ zaman aşımı sınırları. |
+| `core/transcript_format.py` | Ses parçalama yönteminden bağımsız paragraf düzeni. |
+| `core/engines.py` | Motor seçenekleri, ayar kontrolü, yerel model/bulut istemcisi yükleme ve Türkçe tanıma. PyQt bağımlılığı yoktur. |
+| `core/local_engine_process.py` | Yerel modelleri GUI'den ayrı süreçte çalıştırır, çökme kodunu okunabilir hataya çevirir. |
+| `core/audio_runtime.py` | Pydub'ı paketle gelen FFmpeg'e yönlendirir. |
+| `core/media_converter.py` | Ses/video dosyasını geçici PCM WAV'a hazırlar ve geçici dosyaları temizler. PyQt bağımlılığı yoktur. |
+| `services/conversion_service.py` | Arayüz bağımsız iş yönetimi; motor listesi, başlatma ve düz veri olarak durum/sonuç sunar. |
+| `desktop/webview_app.py` | Web arayüzünü Python servisine bağlar; masaüstü dosya/klasör diyaloglarını yönetir. |
+| `desktop/web_ui/` | HTML, CSS ve JavaScript arayüzü; harici CDN veya font indirmesi yoktur. |
 | `app.py` | Yeni WebView2 uygulamasını başlatır. |
-| `pyqt_frontend.py`, `worker.py`, `pyqt_app.py` | Korunan eski PyQt arayüzü, QThread adaptörü ve başlatıcısı. |
+| `eski/pyqt_frontend.py`, `eski/worker.py`, `eski/pyqt_app.py` | Korunan eski PyQt arayüzü, QThread adaptörü ve başlatıcısı. |
 
-Yeni akış: `app.py` → `webview_app.py` ↔ `web_ui/`.
+Yeni akış: `app.py` → `desktop/webview_app.py` ↔ `desktop/web_ui/`.
 Python bağlantısı → `ConversionService` → `prepare_wav` → `convert_audio`.
-Eski akış: `pyqt_app.py` → `pyqt_frontend.py` → `worker.py` → aynı backend.
+Eski akış: `eski/pyqt_app.py` → `eski/pyqt_frontend.py` → `eski/worker.py` → aynı backend.
 
 Backend, arayüz açmadan da kullanılabilir:
 
 ```python
-from backend import convert_audio
-from engines import RecognitionOptions
+from core.backend import convert_audio
+from core.engines import RecognitionOptions
 
 if __name__ == "__main__":
     result = convert_audio(
@@ -244,7 +244,7 @@ if __name__ == "__main__":
 ```
 
 `convert_audio` eşzamanlı çalışır; arayüzden çağrılırken `ConversionService`
-veya eski Qt arayüzündeki `worker.py` üzerinden çalıştırılmalıdır.
+veya eski Qt arayüzündeki `eski/worker.py` üzerinden çalıştırılmalıdır.
 Google konuşma tanıma servisi için internet bağlantısı gerekir.
 Sonucun `status` alanı `success`, `partial` veya `failed` olur. Dosya hataları
 çağırana istisna olarak iletilir. İsteğe bağlı `progress_callback`, işlenen
@@ -253,8 +253,8 @@ parçaların yüzdesini alır.
 MP3, MP4 ve diğer medya dosyalarını arayüz açmadan işlemek için:
 
 ```python
-from backend import convert_audio
-from media_converter import prepare_wav
+from core.backend import convert_audio
+from core.media_converter import prepare_wav
 
 source = "video.mp4"
 with prepare_wav(source) as wav_path:

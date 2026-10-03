@@ -4,7 +4,7 @@ import wave
 from pathlib import Path
 from unittest.mock import patch
 
-import backend
+from core import backend
 
 
 class ConversionTestCase(unittest.TestCase):

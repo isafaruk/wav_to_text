@@ -19,7 +19,7 @@ def main():
     from unittest.mock import patch
 
     import webview
-    from webview_app import DesktopApi
+    from desktop.webview_app import DesktopApi
 
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["PYWEBVIEW_LOG"] = "debug"
@@ -33,7 +33,7 @@ def main():
         audio.writeframes(b"\x00\x00" * 16000)
     api = DesktopApi()
     root = Path(__file__).resolve().parents[1]
-    window = webview.create_window("WebView integration test", str(root / "web_ui/index.html"),
+    window = webview.create_window("WebView integration test", str(root / "desktop/web_ui/index.html"),
                                    js_api=api, width=1120, height=790)
     api._window = window
     failures = []

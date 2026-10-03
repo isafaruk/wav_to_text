@@ -6,7 +6,7 @@ import sys
 
 def main():
     from PyQt5 import QtWidgets
-    from pyqt_frontend import Ui_Dialog
+    from eski.pyqt_frontend import Ui_Dialog
 
     app = QtWidgets.QApplication(sys.argv)
     dialog = QtWidgets.QDialog()

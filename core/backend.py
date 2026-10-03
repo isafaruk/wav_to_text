@@ -10,13 +10,13 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import speech_recognition as sr
-from audio_runtime import AudioSegment
+from core.audio_runtime import AudioSegment
 from pydub.utils import make_chunks
 
-from audio_policy import (CLOUD_UPLOAD_ENGINES, LOCAL_ENGINES, UPLOAD_SAMPLE_RATE,
+from core.audio_policy import (CLOUD_UPLOAD_ENGINES, LOCAL_ENGINES, UPLOAD_SAMPLE_RATE,
                           UPLOAD_SAMPLE_WIDTH, chunk_duration_ms, request_timeout)
-from engines import RecognitionOptions, recognition_session, validate_options
-from transcript_format import format_paragraphs
+from core.engines import RecognitionOptions, recognition_session, validate_options
+from core.transcript_format import format_paragraphs
 
 
 @dataclass(frozen=True)

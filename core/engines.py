@@ -14,8 +14,8 @@ import time
 
 import speech_recognition as sr
 
-from audio_policy import LOCAL_ENGINES
-from local_engine_process import local_session
+from core.audio_policy import LOCAL_ENGINES
+from core.local_engine_process import local_session
 
 
 @dataclass(frozen=True)

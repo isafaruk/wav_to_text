@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 from helpers import ConversionTestCase
-from webview_app import DesktopApi
+from desktop.webview_app import DesktopApi
 
 
 class DesktopApiTests(ConversionTestCase):
@@ -25,7 +25,7 @@ class DesktopApiTests(ConversionTestCase):
         self.assertIn("dosyası seçin", result["error"])
 
     def test_only_current_output_folder_can_be_opened(self):
-        with patch("webview_app.os.startfile", create=True) as open_folder:
+        with patch("desktop.webview_app.os.startfile", create=True) as open_folder:
             self.assertFalse(self.api.open_output_folder()["ok"])
             open_folder.assert_not_called()
             self.api._selected_path = str(self.source)
@@ -50,6 +50,6 @@ class DesktopApiTests(ConversionTestCase):
         import sys
 
         result = subprocess.run([sys.executable, "-B", "-W", "error::RuntimeWarning", "-c",
-                                 "import app, webview_app, sys; assert 'PyQt5' not in sys.modules"],
+                                 "import app, desktop.webview_app, sys; assert 'PyQt5' not in sys.modules"],
                                 capture_output=True, text=True, timeout=15)
         self.assertEqual(0, result.returncode, result.stderr)

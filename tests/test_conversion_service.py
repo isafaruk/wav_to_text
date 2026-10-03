@@ -2,8 +2,8 @@ from contextlib import nullcontext
 from threading import Event
 from unittest.mock import patch
 
-from backend import ConversionResult
-from conversion_service import ConversionService
+from core.backend import ConversionResult
+from services.conversion_service import ConversionService
 from helpers import ConversionTestCase
 
 
@@ -28,7 +28,7 @@ class ConversionServiceTests(ConversionTestCase):
             release.wait(5)
             return ConversionResult("failed", "", 0, 1, None)
 
-        with patch("conversion_service.convert_audio", side_effect=convert):
+        with patch("services.conversion_service.convert_audio", side_effect=convert):
             service.start(str(self.source), {})
             try:
                 self.assertTrue(started.wait(5))
@@ -44,7 +44,7 @@ class ConversionServiceTests(ConversionTestCase):
 
     def test_error_restores_service_for_retry(self):
         service = ConversionService()
-        with patch("conversion_service.prepare_wav", side_effect=OSError("bad media")):
+        with patch("services.conversion_service.prepare_wav", side_effect=OSError("bad media")):
             service.start(str(self.source), {})
             service._thread.join(5)
         self.assertEqual("error", service.snapshot()["status"])
@@ -59,7 +59,7 @@ class ConversionServiceTests(ConversionTestCase):
             with self.subTest(status=status):
                 result = ConversionResult(status, "text", successful, 2, output, ("chunk error",))
                 service = ConversionService()
-                with patch("conversion_service.convert_audio", return_value=result):
+                with patch("services.conversion_service.convert_audio", return_value=result):
                     service.start(str(self.source), {})
                     service._thread.join(5)
                 self.assertEqual(status, service.snapshot()["status"])
@@ -72,7 +72,7 @@ class ConversionServiceTests(ConversionTestCase):
         with self.assertRaises(ValueError):
             service.start(str(self.source), {"engine": 123})
         result = ConversionResult("failed", "", 0, 1, None)
-        with patch("conversion_service.convert_audio", return_value=result):
+        with patch("services.conversion_service.convert_audio", return_value=result):
             service.start(str(self.source), {"engine": "groq", "api_key": "private-key"})
             service._thread.join(5)
         self.assertNotIn("private-key", str(service.snapshot()))
@@ -85,8 +85,8 @@ class ConversionServiceTests(ConversionTestCase):
         media.write_bytes(b"fake media")
         service = ConversionService()
         result = ConversionResult("success", "text", 1, 1, "recording.txt")
-        with patch("conversion_service.prepare_wav", return_value=nullcontext(str(self.source))), patch(
-            "conversion_service.convert_audio", return_value=result
+        with patch("services.conversion_service.prepare_wav", return_value=nullcontext(str(self.source))), patch(
+            "services.conversion_service.convert_audio", return_value=result
         ) as convert:
             service.start(str(media), {"engine": "faster_whisper", "model": "tiny"})
             service._thread.join(5)

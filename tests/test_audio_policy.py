@@ -4,11 +4,11 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 import wave
 
-import audio_policy
-import backend
-from engines import RecognitionOptions
+from core import audio_policy
+from core import backend
+from core.engines import RecognitionOptions
 from helpers import ConversionTestCase
-from transcript_format import format_paragraphs
+from core.transcript_format import format_paragraphs
 
 
 class AudioPolicyTests(ConversionTestCase):
@@ -24,7 +24,7 @@ class AudioPolicyTests(ConversionTestCase):
                     return "metin"
                 yield transcribe
 
-            with self.subTest(engine=engine), patch("backend.recognition_session", session):
+            with self.subTest(engine=engine), patch("core.backend.recognition_session", session):
                 result = backend.convert_audio(str(self.source), progress.append, recognition_options=RecognitionOptions(
                     engine=engine, api_key="key", region="westeurope"))
                 self.assertEqual([50, 50, 0.1], calls)
@@ -46,7 +46,7 @@ class AudioPolicyTests(ConversionTestCase):
                     return "metin"
                 yield transcribe
 
-            with self.subTest(engine=engine), patch("backend.recognition_session", session):
+            with self.subTest(engine=engine), patch("core.backend.recognition_session", session):
                 result = backend.convert_audio(str(self.source), progress.append, recognition_options=RecognitionOptions(
                     engine=engine, api_key="key"))
                 self.assertEqual(2, len(uploads))
@@ -72,7 +72,7 @@ class AudioPolicyTests(ConversionTestCase):
             def session(*args, **kwargs):
                 yield transcribe
 
-            with self.subTest(engine=engine), patch("backend.recognition_session", session):
+            with self.subTest(engine=engine), patch("core.backend.recognition_session", session):
                 result = backend.convert_audio(str(self.source), recognition_options=RecognitionOptions(
                     engine=engine, api_key="key"))
                 transcribe.assert_called_once()
@@ -92,7 +92,7 @@ class AudioPolicyTests(ConversionTestCase):
                 return "tam kayıt"
             yield transcribe
 
-        with patch("backend.recognition_session", session), patch("backend.AudioSegment.export") as export:
+        with patch("core.backend.recognition_session", session), patch("core.backend.AudioSegment.export") as export:
             result = backend.convert_audio(str(self.source), events.append, recognition_options=RecognitionOptions(
                 engine="faster_whisper"))
         self.assertEqual([0, 50, 99, 100], events)
@@ -102,7 +102,7 @@ class AudioPolicyTests(ConversionTestCase):
 
     def test_empty_local_file_does_not_load_a_model(self):
         self.write_wav(self.source, duration_ms=0)
-        with patch("backend.recognition_session") as session:
+        with patch("core.backend.recognition_session") as session:
             result = backend.convert_audio(str(self.source), recognition_options=RecognitionOptions(engine="faster_whisper"))
         session.assert_not_called()
         self.assertEqual("failed", result.status)
