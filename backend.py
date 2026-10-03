@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from tempfile import TemporaryDirectory
 
 import speech_recognition as sr
-from pydub import AudioSegment
+from audio_runtime import AudioSegment
 from pydub.utils import make_chunks
 
 from engines import RecognitionOptions, recognition_session
