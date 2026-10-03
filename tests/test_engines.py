@@ -1,4 +1,5 @@
 import json
+from contextlib import contextmanager
 import os
 from types import SimpleNamespace
 import unittest
@@ -19,6 +20,13 @@ class EngineTests(ConversionTestCase):
         self.recognizer.operation_timeout = 30
         self.audio = sr.AudioData(b"\x00\x00" * 8000, 8000, 2)
         self.enterContext(patch.dict(os.environ, {}, clear=True))
+        # Model adapters are unit-tested in-process with fake native libraries.
+        # Real process isolation is covered separately in test_local_engine_process.
+        @contextmanager
+        def model_session(options):
+            yield engines._vosk(options) if options.engine == "vosk" else engines._local_whisper(options)
+
+        self.enterContext(patch("engines.local_session", model_session))
 
     def test_google_stays_default_without_optional_imports(self):
         with patch("engines.import_module") as load:

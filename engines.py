@@ -13,6 +13,8 @@ import time
 
 import speech_recognition as sr
 
+from local_engine_process import local_session
+
 
 @dataclass(frozen=True)
 class EngineSpec:
@@ -173,10 +175,9 @@ def recognition_session(recognizer, options):
     validate_options(options)
     if options.engine == "google":
         yield lambda audio: recognizer.recognize_google(audio, language="tr-tr")
-    elif options.engine in ("faster_whisper", "whisper"):
-        yield _local_whisper(options)
-    elif options.engine == "vosk":
-        yield _vosk(options)
+    elif options.engine in ("faster_whisper", "whisper", "vosk"):
+        with local_session(options) as transcribe:
+            yield transcribe
     elif options.engine == "azure":
         yield lambda audio: recognizer.recognize_azure(
             audio, key=_api_key(options), location=_region(options), language="tr-TR")
