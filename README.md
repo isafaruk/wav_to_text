@@ -131,6 +131,8 @@ varsa `video(1).txt` gibi bir ad kullanılır.
 
 TXT çıktısında her 50 saniyelik ses parçası ayrı bir paragrafta yer alır;
 paragraflar arasında bir boş satır bulunur. Son bölüm daha kısa olabilir.
+Dosya UTF-8 olarak kaydedilir; Türkçe ve diğer Unicode karakterler Windows'un
+varsayılan karakter kodlamasından bağımsız olarak korunur.
 Anlaşılamayan veya tanıma hatası oluşan bölümler de kendi paragraflarında
 belirtilir. Paragraf sınırları ses parçalarına dayanır; cümle sonlarına göre
 belirlenmez.

@@ -151,7 +151,7 @@ class MediaConverterTests(ConversionTestCase):
         self.assertEqual(1, len(results))
         self.assertEqual("success", results[0].status)
         self.assertEqual(source.with_suffix(".txt"), Path(results[0].output_path))
-        self.assertEqual("first", Path(results[0].output_path).read_text())
+        self.assertEqual("first", Path(results[0].output_path).read_text(encoding="utf-8"))
         self.assertEqual([100], progress)
         self.assertEqual(original, source.read_bytes())
         self.assertEqual(b"existing user wav", neighbor_wav.read_bytes())

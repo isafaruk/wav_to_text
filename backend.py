@@ -98,7 +98,7 @@ def convert_audio(
         dosya_adi = output_base + "({0}).txt".format(i)
         i += 1
 
-    with open(dosya_adi, "w") as dosya:
+    with open(dosya_adi, "w", encoding="utf-8") as dosya:
         dosya.write(text)
     status = "success" if successful_chunks == len(chunks) else "partial"
     return ConversionResult(status, text, successful_chunks, len(chunks),

@@ -21,7 +21,7 @@ class BackendTests(ConversionTestCase):
         existing_text.write_text("existing transcript")
         result = backend.convert_audio(str(self.source), output_source_path=str(original_media))
         self.assertEqual(media_directory / "recording(1).txt", Path(result.output_path))
-        self.assertEqual("first", Path(result.output_path).read_text())
+        self.assertEqual("first", Path(result.output_path).read_text(encoding="utf-8"))
         self.assertEqual("existing transcript", existing_text.read_text())
         self.assertFalse(self.source.with_suffix(".txt").exists())
 
@@ -34,7 +34,7 @@ class BackendTests(ConversionTestCase):
         self.assertTrue(self.source.exists())
         self.assertEqual(original, self.source.read_bytes())
         self.assertEqual(b"existing user file", neighbor.read_bytes())
-        self.assertEqual("first", self.source.with_suffix(".txt").read_text())
+        self.assertEqual("first", self.source.with_suffix(".txt").read_text(encoding="utf-8"))
 
     def test_each_run_uses_a_new_directory_and_cleans_it(self):
         exported = []
@@ -116,7 +116,7 @@ class BackendTests(ConversionTestCase):
                 self.assertEqual(2, result.total_chunks)
                 self.assertEqual(2 - successful, len(result.errors))
                 if successful:
-                    self.assertEqual(result.text, Path(result.output_path).read_text())
+                    self.assertEqual(result.text, Path(result.output_path).read_text(encoding="utf-8"))
                     Path(result.output_path).unlink()
                 else:
                     self.assertIsNone(result.output_path)
@@ -127,14 +127,31 @@ class BackendTests(ConversionTestCase):
         self.recognize.side_effect = ["  first ", " second  "]
         result = backend.convert_audio(str(self.source))
         self.assertEqual("first\n\nsecond", result.text)
-        self.assertEqual("first\n\nsecond", Path(result.output_path).read_text())
+        self.assertEqual("first\n\nsecond", Path(result.output_path).read_text(encoding="utf-8"))
+
+    def test_transcript_is_saved_as_utf8_even_with_a_windows_ansi_default(self):
+        transcript = "Türkçe: ığüşöç İĞÜŞÖÇ — 漢字 😀"
+        self.recognize.return_value = transcript
+        real_open = open
+
+        def ansi_open(path, mode="r", *args, **kwargs):
+            if "b" not in mode:
+                kwargs.setdefault("encoding", "cp1254")
+            return real_open(path, mode, *args, **kwargs)
+
+        with patch("backend.open", side_effect=ansi_open):
+            result = backend.convert_audio(str(self.source))
+
+        self.assertEqual("success", result.status)
+        self.assertEqual(transcript, result.text)
+        self.assertEqual(transcript.encode("utf-8"), Path(result.output_path).read_bytes())
 
     def test_unrecognized_chunks_remain_separated_in_partial_text(self):
         self.write_wav(self.source, duration_ms=100100)
         self.recognize.side_effect = ["first", backend.sr.UnknownValueError(), "second"]
         result = backend.convert_audio(str(self.source))
         self.assertEqual("first\n\n[2. parça: Ses algılanamadı.]\n\nsecond", result.text)
-        self.assertEqual(result.text, Path(result.output_path).read_text())
+        self.assertEqual(result.text, Path(result.output_path).read_text(encoding="utf-8"))
 
     def test_empty_wav_does_not_claim_success_or_write_output(self):
         self.write_wav(self.source, duration_ms=0)
