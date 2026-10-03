@@ -50,6 +50,6 @@ class DesktopApiTests(ConversionTestCase):
         import sys
 
         result = subprocess.run([sys.executable, "-B", "-W", "error::RuntimeWarning", "-c",
-                                 "import proje, webview_app, sys; assert 'PyQt5' not in sys.modules"],
+                                 "import app, webview_app, sys; assert 'PyQt5' not in sys.modules"],
                                 capture_output=True, text=True, timeout=15)
         self.assertEqual(0, result.returncode, result.stderr)

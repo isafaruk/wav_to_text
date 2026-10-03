@@ -6,7 +6,7 @@ MP3, MP4, M4A, FLAC, OGG ve FFmpeg'in okuyabildiği diğer ses/video biçimleri
 Kurulum ve çalıştırma (proje kök dizininde):
 ```shell
 python -m pip install -r requirements.txt
-python proje.py
+python app.py
 ```
 
 Varsayılan arayüz artık **HTML/CSS/JavaScript + pywebview (WebView2)**.
@@ -193,10 +193,10 @@ Kodun sorumlulukları ayrı dosyalarda tutulur:
 | `conversion_service.py` | Arayüz bağımsız iş yönetimi; motor listesi, başlatma ve düz veri olarak durum/sonuç sunar. |
 | `webview_app.py` | Web arayüzünü Python servisine bağlar; masaüstü dosya/klasör diyaloglarını yönetir. |
 | `web_ui/` | HTML, CSS ve JavaScript arayüzü; harici CDN veya font indirmesi yoktur. |
-| `proje.py` | Yeni WebView2 uygulamasını başlatır. |
+| `app.py` | Yeni WebView2 uygulamasını başlatır. |
 | `pyqt_frontend.py`, `worker.py`, `pyqt_app.py` | Korunan eski PyQt arayüzü, QThread adaptörü ve başlatıcısı. |
 
-Yeni akış: `proje.py` → `webview_app.py` ↔ `web_ui/`.
+Yeni akış: `app.py` → `webview_app.py` ↔ `web_ui/`.
 Python bağlantısı → `ConversionService` → `prepare_wav` → `convert_audio`.
 Eski akış: `pyqt_app.py` → `pyqt_frontend.py` → `worker.py` → aynı backend.
 
