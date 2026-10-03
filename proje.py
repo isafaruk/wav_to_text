@@ -58,18 +58,14 @@ class AudioToTextThread(QtCore.QThread):
         if not chunks:
             return ConversionResult("failed", "", 0, 0, None,
                                     ("WAV dosyası ses verisi içermiyor.",))
-        adet = int(len(myaudio) / chunk_length_ms) + 1
-        yuzde = (100 / adet)
         text_parts = []
         successful_chunks = 0
         errors = []
         with TemporaryDirectory(prefix="wav_to_text_") as temp_dir:
             for i, chunk in enumerate(chunks):
                 chunk_name = os.path.join(temp_dir, 'chunk{0}.wav'.format(i + 1))
-                yuzdelik = int(yuzde * (i + 1))
                 with open(chunk_name, "wb") as chunk_file:
                     chunk.export(chunk_file, format='wav')
-                self.progress.emit(yuzdelik)
                 with sr.AudioFile(chunk_name) as source:
                     audio = r.record(source)  # read the entire audio file
                     try:
@@ -91,6 +87,7 @@ class AudioToTextThread(QtCore.QThread):
                     else:
                         text_parts.append(transcript)
                         successful_chunks += 1
+                self.progress.emit((i + 1) * 100 // len(chunks))
 
         text = " ".join(text_parts)
         if not successful_chunks:

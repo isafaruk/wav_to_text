@@ -252,6 +252,53 @@ class ConversionTests(unittest.TestCase):
                 self.assertTrue(ui.pushButton_2.isEnabled())
                 dialog.close()
 
+    def test_progress_uses_actual_chunk_count_after_recognition(self):
+        for duration_ms, expected in [
+            (100, [100]),
+            (50000, [100]),
+            (50100, [50, 100]),
+            (100000, [50, 100]),
+            (100100, [33, 66, 100]),
+        ]:
+            with self.subTest(duration_ms=duration_ms):
+                self.write_wav(self.source, duration_ms=duration_ms)
+                events = []
+                worker = proje.AudioToTextThread(str(self.source))
+                worker.progress.connect(lambda value: events.append(("progress", value)))
+                self.recognize.side_effect = lambda *args, **kwargs: events.append(
+                    ("recognized", None)
+                ) or "text"
+                worker.run()
+                expected_events = []
+                for value in expected:
+                    expected_events.extend([("recognized", None), ("progress", value)])
+                self.assertEqual(expected_events, events)
+
+    def test_failed_recognition_is_counted_as_processed(self):
+        self.write_wav(self.source, duration_ms=50100)
+        events = []
+        worker = proje.AudioToTextThread(str(self.source))
+        worker.progress.connect(lambda value: events.append(("progress", value)))
+
+        def fail_recognition(*args, **kwargs):
+            events.append(("failed", None))
+            raise proje.sr.RequestError("offline")
+
+        self.recognize.side_effect = fail_recognition
+        worker.run()
+        self.assertEqual([
+            ("failed", None), ("progress", 50),
+            ("failed", None), ("progress", 100),
+        ], events)
+
+    def test_empty_audio_has_no_processed_chunks(self):
+        self.write_wav(self.source, duration_ms=0)
+        worker = proje.AudioToTextThread(str(self.source))
+        progress = []
+        worker.progress.connect(progress.append)
+        worker.run()
+        self.assertEqual([], progress)
+
 
 if __name__ == "__main__":
     unittest.main()
