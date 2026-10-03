@@ -1,5 +1,6 @@
 import os
 import sys
+from tempfile import TemporaryDirectory
 import speech_recognition as sr
 from PyQt5 import QtCore, QtGui
 from PyQt5 import QtWidgets
@@ -33,19 +34,21 @@ class AudioToTextThread(QtCore.QThread):
         adet = int(len(myaudio) / chunk_length_ms) + 1
         yuzde = (100 / adet)
         text = ""
-        for i, chunk in enumerate(chunks):
-            chunk_name = 'chunk{0}.wav'.format(i + 1)
-            yuzdelik = int(yuzde * (i + 1))
-            chunk.export(chunk_name, format='wav')
-            self.progress.emit(yuzdelik)
-            with sr.AudioFile(chunk_name) as source:
-                audio = r.record(source)  # read the entire audio file
-                try:
-                    text = text + str(r.recognize_google(audio, language='tr-tr'))
-                except sr.UnknownValueError:
-                    text += "[Ses Algılanamadı.]"
-                except sr.RequestError as e:
-                    text += "[İnternet bağlantısı gerekmektedir; {0}]".format(e)
+        with TemporaryDirectory(prefix="wav_to_text_") as temp_dir:
+            for i, chunk in enumerate(chunks):
+                chunk_name = os.path.join(temp_dir, 'chunk{0}.wav'.format(i + 1))
+                yuzdelik = int(yuzde * (i + 1))
+                with open(chunk_name, "wb") as chunk_file:
+                    chunk.export(chunk_file, format='wav')
+                self.progress.emit(yuzdelik)
+                with sr.AudioFile(chunk_name) as source:
+                    audio = r.record(source)  # read the entire audio file
+                    try:
+                        text = text + str(r.recognize_google(audio, language='tr-tr'))
+                    except sr.UnknownValueError:
+                        text += "[Ses Algılanamadı.]"
+                    except sr.RequestError as e:
+                        text += "[İnternet bağlantısı gerekmektedir; {0}]".format(e)
 
         dosya_adi = os.path.splitext(self.file_path)[0] + ".txt"
 
@@ -58,9 +61,6 @@ class AudioToTextThread(QtCore.QThread):
         with open(dosya_adi, "w") as dosya:
             dosya.write(text)
         dosya.close()
-
-        for i, chunk in enumerate(chunks):
-            os.remove('chunk{0}.wav'.format(i + 1))
 
         msg = QMessageBox()
         msg.setText("İşlem Tamamlandı. ")
