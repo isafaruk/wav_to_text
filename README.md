@@ -27,6 +27,12 @@ dosyalar işlem sonunda veya hata oluştuğunda temizlenir. Özgün dosya korunu
 çıktı onun yanına kaydedilir: `video.mp4` → `video.txt`. Aynı adlı metin dosyası
 varsa `video(1).txt` gibi bir ad kullanılır.
 
+TXT çıktısında her 50 saniyelik ses parçası ayrı bir paragrafta yer alır;
+paragraflar arasında bir boş satır bulunur. Son bölüm daha kısa olabilir.
+Anlaşılamayan veya tanıma hatası oluşan bölümler de kendi paragraflarında
+belirtilir. Paragraf sınırları ses parçalarına dayanır; cümle sonlarına göre
+belirlenmez.
+
 Arayüz önce WAV hazırlama, ardından konuşma tanıma aşamasını gösterir.
 İlerleme yüzdesi konuşma tanıma parçalarını izler. WAV hazırlama için zaman
 aşımı 10 dakika, her konuşma tanıma isteği için 30 saniyedir.

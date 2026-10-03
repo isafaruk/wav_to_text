@@ -122,18 +122,19 @@ class BackendTests(ConversionTestCase):
                     self.assertIsNone(result.output_path)
                     self.assertFalse(self.source.with_suffix(".txt").exists())
 
-    def test_transcript_chunks_are_separated_by_spaces(self):
+    def test_transcript_chunks_are_separated_by_blank_lines(self):
         self.write_wav(self.source, duration_ms=50100)
         self.recognize.side_effect = ["  first ", " second  "]
         result = backend.convert_audio(str(self.source))
-        self.assertEqual("first second", result.text)
-        self.assertEqual("first second", Path(result.output_path).read_text())
+        self.assertEqual("first\n\nsecond", result.text)
+        self.assertEqual("first\n\nsecond", Path(result.output_path).read_text())
 
     def test_unrecognized_chunks_remain_separated_in_partial_text(self):
         self.write_wav(self.source, duration_ms=100100)
         self.recognize.side_effect = ["first", backend.sr.UnknownValueError(), "second"]
         result = backend.convert_audio(str(self.source))
-        self.assertEqual("first [2. parça: Ses algılanamadı.] second", result.text)
+        self.assertEqual("first\n\n[2. parça: Ses algılanamadı.]\n\nsecond", result.text)
+        self.assertEqual(result.text, Path(result.output_path).read_text())
 
     def test_empty_wav_does_not_claim_success_or_write_output(self):
         self.write_wav(self.source, duration_ms=0)

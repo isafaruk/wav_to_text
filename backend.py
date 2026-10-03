@@ -79,7 +79,8 @@ def convert_audio(
             if progress_callback is not None:
                 progress_callback((i + 1) * 100 // len(chunks))
 
-    text = " ".join(text_parts)
+    # Keep each 50-second chunk (including failure markers) in its own paragraph.
+    text = "\n\n".join(text_parts)
     if not successful_chunks:
         return ConversionResult("failed", text, 0, len(chunks), None, tuple(errors))
 
