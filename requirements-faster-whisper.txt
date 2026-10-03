@@ -1,2 +1,1 @@
 -r requirements.txt
-faster-whisper==1.2.1

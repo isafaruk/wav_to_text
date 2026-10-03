@@ -3,3 +3,10 @@ SpeechRecognition==3.17.0
 PyQt5==5.15.11
 audioop-lts==0.2.2; python_version >= "3.13"
 imageio-ffmpeg==0.6.0
+pywebview==6.2.1
+pythonnet==3.2.0; sys_platform == "win32"
+faster-whisper==1.2.1
+openai-whisper==20250625
+vosk==0.3.45
+openai==2.54.0
+groq==1.7.0

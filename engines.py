@@ -1,4 +1,4 @@
-"""Selectable Turkish speech engines; optional dependencies load on demand."""
+"""Selectable Turkish speech engines; installed engines load on demand."""
 
 from __future__ import annotations
 
@@ -101,13 +101,13 @@ def validate_options(options):
             "Türkçe Vosk modelinin açılmış klasörünü seçin veya VOSK_MODEL_PATH tanımlayın.")
 
 
-def _load(module, requirements):
+def _load(module):
     try:
         return import_module(module)
     except (ImportError, OSError) as exc:
         raise EngineConfigurationError(
             "Bu motorun bağımlılıkları eksik veya uyumsuz. Kurulum: "
-            "python -m pip install -r {0}".format(requirements)
+            "python -m pip install -r requirements.txt"
         ) from exc
 
 
@@ -118,9 +118,8 @@ def _audio_array(audio, np):
 
 
 def _local_whisper(options):
-    requirements = "requirements-{0}.txt".format(options.engine.replace("_", "-"))
-    np = _load("numpy", requirements)
-    module = _load("faster_whisper" if options.engine == "faster_whisper" else "whisper", requirements)
+    np = _load("numpy")
+    module = _load("faster_whisper" if options.engine == "faster_whisper" else "whisper")
     model_name = options.model or LOCAL_MODELS[0]
     try:
         if options.engine == "faster_whisper":
@@ -150,7 +149,7 @@ def _local_whisper(options):
 
 
 def _vosk(options):
-    module = _load("vosk", "requirements-vosk.txt")
+    module = _load("vosk")
     try:
         model = module.Model(_model_path(options))
     except Exception as exc:
@@ -182,7 +181,7 @@ def recognition_session(recognizer, options):
         yield lambda audio: recognizer.recognize_azure(
             audio, key=_api_key(options), location=_region(options), language="tr-TR")
     else:
-        sdk = _load(options.engine, "requirements-cloud.txt")
+        sdk = _load(options.engine)
         client_type = sdk.Groq if options.engine == "groq" else sdk.OpenAI
         base_url = "https://api.groq.com/openai/v1" if options.engine == "groq" else "https://api.openai.com/v1"
         with client_type(

@@ -38,7 +38,7 @@ class EngineTests(ConversionTestCase):
 
     def test_missing_optional_package_explains_installation(self):
         with patch("engines.import_module", side_effect=ImportError), self.assertRaisesRegex(
-            EngineConfigurationError, "requirements-faster-whisper.txt"
+            EngineConfigurationError, "requirements.txt"
         ), recognition_session(self.recognizer, RecognitionOptions(engine="faster_whisper")):
             self.fail("An unavailable engine must not start recognition")
 
