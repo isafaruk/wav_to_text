@@ -1,18 +1,74 @@
-from pydub import AudioSegment 
-from pydub.utils import make_chunks 
-import speech_recognition as sr
 import os
-from PyQt5.QtWidgets import QApplication, QErrorMessage, QWidget, QInputDialog, QLineEdit, QFileDialog
-from PyQt5.QtGui import QIcon
-from PyQt5 import QtCore, QtGui, QtWidgets
+import sys
+import speech_recognition as sr
+from PyQt5 import QtCore, QtGui
+from PyQt5 import QtWidgets
+from PyQt5.QtWidgets import QApplication, QFileDialog, QStyleFactory
 from PyQt5.QtWidgets import QMessageBox
+from pydub import AudioSegment
+from pydub.utils import make_chunks
 
-#pip install SpeechRecognition
-#pip install PyQt5
+# pip install SpeechRecognition
+# pip install PyQt5
 
-#python -m PyQt5.uic.pyuic -x untitled.ui -o untitlied.py
+# pyinstaller --noconsole python_dosyam.py
+# python -m PyQt5.uic.pyuic -x untitled.ui -o untitlied.py
 
 os.getcwd()
+
+
+class AudioToTextThread(QtCore.QThread):
+    done = QtCore.pyqtSignal(str)
+    progress = QtCore.pyqtSignal(int)
+
+    def __init__(self, file_path):
+        QtCore.QThread.__init__(self)
+        self.file_path = file_path
+
+    def run(self):
+        r = sr.Recognizer()
+        myaudio = AudioSegment.from_file(self.file_path, 'wav')
+        chunk_length_ms = 50000  # pydub calculates in milliseconds
+        chunks = make_chunks(myaudio, chunk_length_ms)
+        adet = int(len(myaudio) / chunk_length_ms) + 1
+        yuzde = (100 / adet)
+        text = ""
+        for i, chunk in enumerate(chunks):
+            chunk_name = 'chunk{0}.wav'.format(i + 1)
+            yuzdelik = int(yuzde * (i + 1))
+            chunk.export(chunk_name, format='wav')
+            self.progress.emit(yuzdelik)
+            with sr.AudioFile(chunk_name) as source:
+                audio = r.record(source)  # read the entire audio file
+                try:
+                    text = text + str(r.recognize_google(audio, language='tr-tr'))
+                except sr.UnknownValueError:
+                    text += "[Ses Algılanamadı.]"
+                except sr.RequestError as e:
+                    text += "[İnternet bağlantısı gerekmektedir; {0}]".format(e)
+
+        dosya_adi = os.path.splitext(self.file_path)[0] + ".txt"
+
+        # Dosya ismi varsa farklı bir isim oluşturur
+        i = 1
+        while os.path.exists(dosya_adi):
+            dosya_adi = os.path.splitext(self.file_path)[0] + "({0}).txt".format(i)
+            i += 1
+
+        with open(dosya_adi, "w") as dosya:
+            dosya.write(text)
+        dosya.close()
+
+        for i, chunk in enumerate(chunks):
+            os.remove('chunk{0}.wav'.format(i + 1))
+
+        msg = QMessageBox()
+        msg.setText("İşlem Tamamlandı. ")
+        msg.setWindowTitle("İşlem Tamam ")
+        msg.exec_()
+
+        self.done.emit(text)
+
 
 class Ui_Dialog(object):
     path = ""
@@ -47,86 +103,73 @@ class Ui_Dialog(object):
         self.progressBar.setObjectName("progressBar")
         self.retranslateUi(Dialog)
         QtCore.QMetaObject.connectSlotsByName(Dialog)
+        QApplication.setStyle(QStyleFactory.create("Fusion"))
+        Dialog.setWindowFlags(Dialog.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
 
     def retranslateUi(self, Dialog):
         _translate = QtCore.QCoreApplication.translate
         Dialog.setWindowTitle(_translate("Dialog", "Audio to Text"))
+        Dialog.setWindowIcon(QtGui.QIcon('logo.png'))
         self.pushButton.setText(_translate("Dialog", "Gözat"))
         self.label.setText(_translate("Dialog", "Dosya Yolu..."))
         self.label_2.setText(_translate("Dialog", "Dönüştürme işlemi tamamlanmıştır."))
-        self.label_3.setText(_translate("Dialog", "Metin Seçilen Dosya Konumuna 'text.txt' Olarak Eklenmiştir."))
+        self.label_3.setText(_translate("Dialog", "Metin Dosya Konumuna .txt Olarak Eklenmiştir."))
         self.pushButton_2.setText(_translate("Dialog", "Dönüştür"))
         self.pushButton.clicked.connect(self.pushButton_handler)
         self.pushButton_2.clicked.connect(self.pushButton_2_handler)
         self.label_2.setHidden(True)
         self.label_3.setHidden(True)
         self.pushButton_2.setEnabled(False)
-        
+
     def pushButton_handler(self):
-        print("1. Butona Basıldı.")
         self.progressBar.setValue(0)
         self.label.setText("Dosya Yolu...")
         self.open_dialog_box()
         self.label_2.setHidden(True)
         self.label_3.setHidden(True)
         self.pushButton_2.setEnabled(True)
-        
+
     def open_dialog_box(self):
-        global path
         filename = QFileDialog.getOpenFileName()
-        path = filename[0]
-        print(path)
-        self.label.setText(path)
-            
+        self.path = filename[0]
+        self.label.setText(self.path)
+
     def pushButton_2_handler(self):
-        print("2. Butona Basıldı.")
         self.donustur()
-    
+
     def donustur(self):
-        global path
-        if path == "" or path == "Dosya Yolu..." :
+        if self.path == "" or self.path == "Dosya Yolu...":
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Critical)
             msg.setText("Hata")
-            msg.setInformativeText('Dosya Yolu Giriniz.')
+            msg.setInformativeText('Dosya Seçiniz.')
             msg.setWindowTitle("Hata")
             msg.exec_()
-
+        elif not self.path.endswith(".wav"):
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Critical)
+            msg.setText("Hata")
+            msg.setInformativeText('Dosya Uzantısı Yanlış')
+            msg.setWindowTitle("Hata")
+            msg.exec_()
         else:
-            
-            dosya = open("text.txt", "w")
-            
-            r = sr.Recognizer()
-            myaudio = AudioSegment.from_file(path , 'wav')
-            chunk_length_ms = 50000 # pydub calculates in millisec 
-            chunks = make_chunks(myaudio, chunk_length_ms)
-            adet = int(len(myaudio) / chunk_length_ms) +1
-            yuzde = (100/adet)
-            print(adet, "parca mevcut")
-            text = ""
-            for i, chunk in enumerate(chunks):
-                chunk_name = 'chunk{0}.wav'.format(i+1)
-                yuzdelik = int(yuzde*(i+1))
-                print ('dönüştürülüyor', chunk_name,",", "%" ,yuzdelik) 
-                chunk.export(chunk_name, format='wav') 
-                self.progressBar.setValue(yuzdelik)
-                with sr.AudioFile(chunk_name) as source:
-                    audio = r.record(source)  # read the entire audio file                  
-                    text = text + str(r.recognize_google(audio,language='tr-tr', show_all=True))
-        
-            print("Transcription: " + text)
-            dosya.writelines(text)
-            dosya.close()
-            for i, chunk in enumerate(chunks):
-                os.remove('chunk{0}.wav'.format(i+1) )
-            
-            
-            self.label_2.setHidden(False)
-            self.label_3.setHidden(False)
-            
-            
+            self.pushButton.setEnabled(False)
+            self.thread = AudioToTextThread(self.path)
+            self.thread.done.connect(self.on_thread_done)
+            self.thread.progress.connect(self.on_thread_progress)
+            self.thread.start()
+            self.pushButton_2.setEnabled(False)
+
+    def on_thread_done(self, text):
+        self.label_2.setHidden(False)
+        self.label_3.setHidden(False)
+        self.pushButton.setEnabled(True)
+
+    def on_thread_progress(self, value):
+        self.progressBar.setValue(value)
+
+
 if __name__ == "__main__":
-    import sys
     app = QtWidgets.QApplication(sys.argv)
     Dialog = QtWidgets.QDialog()
     ui = Ui_Dialog()
