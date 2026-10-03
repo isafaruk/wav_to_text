@@ -1,5 +1,6 @@
 import os
 import unittest
+from contextlib import nullcontext
 from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -24,6 +25,31 @@ class FrontendTests(ConversionTestCase):
     def test_worker_does_not_create_a_message_box(self):
         AudioToTextThread(str(self.source)).run()
         self.assertEqual([], self.messages.mock_calls)
+
+    def test_non_wav_input_reaches_preparation_and_recognition(self):
+        dialog = QtWidgets.QDialog()
+        ui = frontend.Ui_Dialog()
+        ui.setupUi(dialog)
+        ui.path = str(self.root / "video.MP4")
+        with patch("worker.prepare_wav", return_value=nullcontext(str(self.source))) as prepare:
+            ui.donustur()
+            self.assertTrue(ui.thread.wait(5000))
+            self.app.processEvents()
+        prepare.assert_called_once_with(ui.path)
+        self.messages.information.assert_called_once()
+        self.messages.critical.assert_not_called()
+        self.assertTrue((self.root / "video.txt").exists())
+        self.assertTrue(ui.pushButton_2.isEnabled())
+        dialog.close()
+
+    def test_cancel_file_selection_disables_conversion(self):
+        dialog = QtWidgets.QDialog()
+        ui = frontend.Ui_Dialog()
+        ui.setupUi(dialog)
+        with patch("frontend.QFileDialog.getOpenFileName", return_value=("", "")):
+            ui.pushButton_handler()
+        self.assertFalse(ui.pushButton_2.isEnabled())
+        dialog.close()
 
     def test_completion_message_runs_on_gui_thread(self):
         dialog = QtWidgets.QDialog()

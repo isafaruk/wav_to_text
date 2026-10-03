@@ -27,12 +27,16 @@ class ConversionResult:
 def convert_audio(
     file_path: str,
     progress_callback: Callable[[int], None] | None = None,
+    *,
+    output_source_path: str | None = None,
 ) -> ConversionResult:
     """Convert a WAV file and save its transcript.
 
     The optional callback receives the percentage after each processed chunk.
     Recognition failures are represented in the result; file and unexpected
     errors propagate to the caller. This function runs synchronously.
+    For temporary WAV inputs, output_source_path selects the original media
+    path whose directory and stem are used for the transcript.
     """
     r = sr.Recognizer()
     r.operation_timeout = REQUEST_TIMEOUT_SECONDS
@@ -79,12 +83,13 @@ def convert_audio(
     if not successful_chunks:
         return ConversionResult("failed", text, 0, len(chunks), None, tuple(errors))
 
-    dosya_adi = os.path.splitext(file_path)[0] + ".txt"
+    output_base = os.path.splitext(output_source_path or file_path)[0]
+    dosya_adi = output_base + ".txt"
 
     # Dosya ismi varsa farklı bir isim oluşturur
     i = 1
     while os.path.exists(dosya_adi):
-        dosya_adi = os.path.splitext(file_path)[0] + "({0}).txt".format(i)
+        dosya_adi = output_base + "({0}).txt".format(i)
         i += 1
 
     with open(dosya_adi, "w") as dosya:

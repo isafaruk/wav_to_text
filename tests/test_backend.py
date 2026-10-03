@@ -13,6 +13,18 @@ REAL_RECOGNIZE_GOOGLE = backend.sr.Recognizer.recognize_google
 
 
 class BackendTests(ConversionTestCase):
+    def test_prepared_wav_output_uses_original_media_name_and_directory(self):
+        media_directory = self.root / "original media"
+        media_directory.mkdir()
+        original_media = media_directory / "recording.mp4"
+        existing_text = original_media.with_suffix(".txt")
+        existing_text.write_text("existing transcript")
+        result = backend.convert_audio(str(self.source), output_source_path=str(original_media))
+        self.assertEqual(media_directory / "recording(1).txt", Path(result.output_path))
+        self.assertEqual("first", Path(result.output_path).read_text())
+        self.assertEqual("existing transcript", existing_text.read_text())
+        self.assertFalse(self.source.with_suffix(".txt").exists())
+
     def test_input_named_chunk1_and_neighboring_chunks_are_preserved(self):
         original = self.source.read_bytes()
         neighbor = self.root / "chunk2.wav"

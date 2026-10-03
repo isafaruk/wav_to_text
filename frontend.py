@@ -64,10 +64,15 @@ class Ui_Dialog(QtCore.QObject):
         self.open_dialog_box()
         self.label_2.setHidden(True)
         self.label_3.setHidden(True)
-        self.pushButton_2.setEnabled(True)
+        self.pushButton_2.setEnabled(bool(self.path))
 
     def open_dialog_box(self):
-        filename = QFileDialog.getOpenFileName()
+        filename = QFileDialog.getOpenFileName(
+            self.dialog, "Ses veya video dosyası seçiniz", "",
+            "Ses ve video dosyaları (*.wav *.mp3 *.mp4 *.m4a *.aac *.flac "
+            "*.ogg *.opus *.wma *.aiff *.aif *.mkv *.mov *.avi *.webm *.m4v);;"
+            "Tüm dosyalar (*)",
+        )
         self.path = filename[0]
         self.label.setText(self.path)
 
@@ -82,13 +87,6 @@ class Ui_Dialog(QtCore.QObject):
             msg.setInformativeText('Dosya Seçiniz.')
             msg.setWindowTitle("Hata")
             msg.exec_()
-        elif not self.path.endswith(".wav"):
-            msg = QMessageBox()
-            msg.setIcon(QMessageBox.Critical)
-            msg.setText("Hata")
-            msg.setInformativeText('Dosya Uzantısı Yanlış')
-            msg.setWindowTitle("Hata")
-            msg.exec_()
         else:
             self.progressBar.setValue(0)
             self.label_2.setHidden(True)
@@ -100,6 +98,7 @@ class Ui_Dialog(QtCore.QObject):
             self.thread.error.connect(self.on_thread_error, QtCore.Qt.QueuedConnection)
             self.thread.finished.connect(self.on_thread_finished, QtCore.Qt.QueuedConnection)
             self.thread.progress.connect(self.on_thread_progress, QtCore.Qt.QueuedConnection)
+            self.thread.status.connect(self.on_thread_status, QtCore.Qt.QueuedConnection)
             self.thread.start()
 
     @QtCore.pyqtSlot(object)
@@ -137,3 +136,8 @@ class Ui_Dialog(QtCore.QObject):
     @QtCore.pyqtSlot(int)
     def on_thread_progress(self, value):
         self.progressBar.setValue(value)
+
+    @QtCore.pyqtSlot(str)
+    def on_thread_status(self, message):
+        self.label_2.setText(message)
+        self.label_2.setHidden(False)
