@@ -22,7 +22,7 @@ python pyqt_app.py
 
 `requirements.txt` artık tüm tanıma motorlarını, yeni WebView arayüzünü ve
 eski PyQt arayüzünü tek komutla kurar. Motor başına ayrı paket kurulumu gerekmez.
-Eski `requirements-*.txt` dosyaları aynı ana listeye yönlendirir.
+Kurulum için tek bağımlılık listesi `requirements.txt` dosyasıdır.
 Windows'ta Microsoft Edge **WebView2 Runtime** gerekir; modern bir tarayıcı
 motoru kullanılır. Kurulum kaynağı: [Microsoft WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
 Bu değişiklik bir EXE/kurulum dosyası üretmez; EXE dağıtımı sonraki adımdır.
@@ -60,6 +60,43 @@ paketleri kurar; bütün model boyutlarını indirmez. Yerel Whisper modellerini
 indirmek ve çalıştırmak için servis ücreti yoktur. Hugging Face'in
 `HF_TOKEN` uyarısı ödeme talebi değildir; anahtarsız indirme sınırlarını
 hatırlatır. [Hugging Face limitleri](https://huggingface.co/docs/hub/rate-limits).
+
+Faster Whisper'ı kaldırma (Windows / PowerShell):
+
+- Python paketi proje sanal ortamında, `.venv\Lib\site-packages\faster_whisper`
+  dizininde bulunur.
+- İndirilen modeller varsayılan olarak kullanıcı klasöründeki
+  `.cache\huggingface\hub` dizinindedir. Örneğin `tiny` modeli
+  `models--Systran--faster-whisper-tiny` klasörünü kullanır.
+  `HF_HOME` veya `HF_HUB_CACHE` ayarlanmışsa konum değişebilir.
+
+Dönüşümün bitmesini bekleyip uygulamayı kapatın. Proje kökünde aşağıdaki
+komutla yalnızca `tiny` modelini önbellekten kaldırabilirsiniz. Komut silmeden
+önce onay ister; önizleme için sonuna `--dry-run` ekleyin. Önbellekteki ortak
+dosyaları da hesaba kattığı için klasörü elle silmek yerine bu aracı kullanın.
+
+```powershell
+.\.venv\Scripts\python.exe -m huggingface_hub.cli.hf cache rm model/Systran/faster-whisper-tiny
+```
+
+Diğer indirilmiş modelleri görmek için:
+
+```powershell
+.\.venv\Scripts\python.exe -m huggingface_hub.cli.hf cache ls
+```
+
+Python paketini de kaldırmak isterseniz:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip uninstall faster-whisper
+```
+
+Paket kaldırma, indirilen modeli veya ortak Python bağımlılıklarını kaldırmaz.
+Yalnızca modeli silerseniz bir sonraki Faster Whisper kullanımında yeniden
+indirilir. Paketi kaldırırsanız bu motor yeniden kurulana kadar çalışmaz.
+`requirements.txt` ile kurulumun tekrarlanması paketi yeniden getirir.
+Kaynaklar: [Hugging Face önbellek yönetimi](https://huggingface.co/docs/huggingface_hub/guides/manage-cache#clean-your-cache),
+[pip uninstall](https://pip.pypa.io/en/stable/cli/pip_uninstall/).
 
 Yerel motorlar ayrı Python sürecinde çalışır. Böylece PyQt'nin eski C++ DLL'leri
 ile CTranslate2 gibi motorların DLL'leri aynı süreçte yüklenmez. Motor çökerse
