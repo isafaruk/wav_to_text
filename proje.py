@@ -62,17 +62,13 @@ class AudioToTextThread(QtCore.QThread):
             dosya.write(text)
         dosya.close()
 
-        msg = QMessageBox()
-        msg.setText("İşlem Tamamlandı. ")
-        msg.setWindowTitle("İşlem Tamam ")
-        msg.exec_()
-
         self.done.emit(text)
 
 
-class Ui_Dialog(object):
+class Ui_Dialog(QtCore.QObject):
     path = ""
     def setupUi(self, Dialog):
+        self.dialog = Dialog
         Dialog.setObjectName("Dialog")
         Dialog.resize(400, 300)
         self.label = QtWidgets.QLabel(Dialog)
@@ -155,16 +151,19 @@ class Ui_Dialog(object):
         else:
             self.pushButton.setEnabled(False)
             self.thread = AudioToTextThread(self.path)
-            self.thread.done.connect(self.on_thread_done)
-            self.thread.progress.connect(self.on_thread_progress)
+            self.thread.done.connect(self.on_thread_done, QtCore.Qt.QueuedConnection)
+            self.thread.progress.connect(self.on_thread_progress, QtCore.Qt.QueuedConnection)
             self.thread.start()
             self.pushButton_2.setEnabled(False)
 
+    @QtCore.pyqtSlot(str)
     def on_thread_done(self, text):
         self.label_2.setHidden(False)
         self.label_3.setHidden(False)
         self.pushButton.setEnabled(True)
+        QMessageBox.information(self.dialog, "İşlem Tamam", "İşlem Tamamlandı.")
 
+    @QtCore.pyqtSlot(int)
     def on_thread_progress(self, value):
         self.progressBar.setValue(value)
 

@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5 import QtWidgets
+from PyQt5 import QtCore, QtWidgets
 
 import proje
 
@@ -65,6 +65,26 @@ class ConversionTests(unittest.TestCase):
         for path in exported:
             self.assertNotEqual(self.root, path.parent)
             self.assertFalse(path.parent.exists())
+
+    def test_worker_does_not_create_a_message_box(self):
+        proje.AudioToTextThread(str(self.source)).run()
+        self.assertEqual([], self.messages.mock_calls)
+
+    def test_completion_message_runs_on_gui_thread(self):
+        dialog = QtWidgets.QDialog()
+        ui = proje.Ui_Dialog()
+        ui.setupUi(dialog)
+        ui.path = str(self.source)
+        message_threads = []
+        self.messages.information.side_effect = lambda *args: message_threads.append(
+            QtCore.QThread.currentThread()
+        )
+        ui.donustur()
+        self.assertTrue(ui.thread.wait(5000))
+        self.app.processEvents()
+        self.assertEqual([self.app.thread()], message_threads)
+        self.assertFalse(ui.label_2.isHidden())
+        dialog.close()
 
 
 if __name__ == "__main__":
