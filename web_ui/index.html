@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'">
+  <title>Ses / Metin</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="Ses Metin ana ekran">
+      <span class="brand-icon" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+      <span>ses<span class="brand-slash">/</span>metin</span>
+    </a>
+    <span class="top-label">KAYITTAN KELİMELERE</span>
+    <span class="language"><span class="dot"></span> Türkçe · TR</span>
+  </header>
+
+  <main>
+    <section class="intro">
+      <div><p class="eyebrow">ÇALIŞMA ALANI</p><h1>Sesini yazıya taşı.</h1>
+        <p class="subtitle">Bir kayıt seç, tanıma motorunu belirle. Metnin burada hazır olsun.</p></div>
+      <span class="format-note">SES & VİDEO<span>MP3 · MP4 · WAV ve daha fazlası</span></span>
+    </section>
+
+    <div class="workspace">
+      <aside class="setup-panel">
+        <section class="section file-section">
+          <h2><span class="step">01</span> Kaydını seç</h2>
+          <button id="choose-file" class="file-picker" disabled>
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M6 8a2 2 0 0 1 2-2h6l3 4h7a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8Z" stroke="currentColor" stroke-width="1.5"/><path d="M12 17v5m4-8v11m4-8v5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            <strong id="file-name">Ses veya video dosyası seç</strong>
+            <span id="file-meta">Dosyalarına göz at</span>
+          </button>
+          <p id="file-path" class="file-path" hidden></p>
+        </section>
+
+        <section class="section settings-section">
+          <h2><span class="step">02</span> Nasıl dönüştürelim?</h2>
+          <fieldset id="settings" disabled>
+            <label for="engine">Tanıma motoru</label>
+            <select id="engine"><option>Hazırlanıyor…</option></select>
+            <div id="engine-description" class="engine-note">Python bağlantısı kuruluyor.</div>
+            <div id="model-row" class="field" hidden><label for="model">Model</label><select id="model"></select></div>
+            <div id="device-row" class="field" hidden><label for="device">Çalışacağı aygıt</label><select id="device"><option value="cpu">CPU · İşlemci</option><option value="cuda">NVIDIA GPU · CUDA</option></select><small>GPU için uyumlu CUDA kurulumu gerekir.</small></div>
+            <div id="key-row" class="field" hidden><label for="api-key">API anahtarı</label><input id="api-key" type="password" autocomplete="off" spellcheck="false"><small id="key-hint"></small></div>
+            <div id="region-row" class="field" hidden><label for="region">Azure bölgesi</label><input id="region" placeholder="Örn. westeurope" autocomplete="off"><small>Veya AZURE_SPEECH_REGION ortam değişkeni.</small></div>
+            <div id="path-row" class="field" hidden><label for="model-path">Türkçe Vosk model klasörü</label><div class="input-action"><input id="model-path" placeholder="Açılmış model klasörü"><button id="choose-model" class="small-button" type="button">Seç</button></div><small>Veya VOSK_MODEL_PATH ortam değişkeni.</small></div>
+          </fieldset>
+        </section>
+
+        <div class="start-area"><button id="start" class="primary-button" disabled>Metne dönüştür <span aria-hidden="true">→</span></button>
+          <p>Çıktı, kaydın yanına TXT olarak eklenir.</p></div>
+      </aside>
+
+      <section class="result-panel" aria-labelledby="result-heading">
+        <div class="result-header"><div><p class="eyebrow">ÇIKTI</p><h2 id="result-heading">Metnin</h2></div>
+          <div class="result-actions"><button id="copy" class="small-button" disabled>Kopyala</button><button id="open-folder" class="small-button" disabled>Klasörü aç ↗</button></div>
+        </div>
+        <div class="transcript-area">
+          <div id="empty-state" class="empty-state"><div class="paper-icon" aria-hidden="true"><span></span><span></span><span></span><span></span></div><h3>Her kaydın bir hikâyesi var.</h3><p>Dönüştürme tamamlandığında metnin burada görünecek.</p><span>50 saniyelik bölümler · Ayrı paragraflar</span></div>
+          <label for="transcript" class="sr-only">Dönüştürülen metin</label>
+          <textarea id="transcript" readonly hidden spellcheck="false"></textarea>
+        </div>
+        <div id="errors" class="errors" hidden role="alert"></div>
+        <div class="result-footer"><span id="word-count">0 kelime</span><span id="output-path" title="">TXT çıktısı</span></div>
+      </section>
+    </div>
+
+    <section class="status-panel" aria-label="İşlem durumu">
+      <div class="status-heading"><span id="status-badge" class="status-badge">HAZIRLANIYOR</span><p id="stage" role="status" aria-live="polite">Uygulama başlatılıyor…</p><span id="elapsed">00:00</span><strong id="percentage">0%</strong></div>
+      <progress id="progress" max="100" value="0" aria-label="Dönüştürme ilerlemesi"></progress>
+    </section>
+    <footer class="page-footer"><span>Ses / Metin</span><span>Google · Whisper · Vosk · Groq · Azure · OpenAI</span></footer>
+  </main>
+  <div id="notice" class="notice" hidden role="alert"></div>
+</body>
+</html>

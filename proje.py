@@ -1,19 +1,12 @@
-"""Start the desktop WAV-to-text application."""
+"""Start the WebView2 desktop application; pyqt_app.py launches the old UI."""
 
 import sys
 from multiprocessing import freeze_support
 
 
 def main():
-    from PyQt5 import QtWidgets
-    from frontend import Ui_Dialog
-
-    app = QtWidgets.QApplication(sys.argv)
-    dialog = QtWidgets.QDialog()
-    ui = Ui_Dialog()
-    ui.setupUi(dialog)
-    dialog.show()
-    return app.exec_()
+    from webview_app import main as start_webview
+    return start_webview()
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt5 import QtCore, QtWidgets
 
 import backend
-import frontend
+import pyqt_frontend as frontend
 from helpers import ConversionTestCase
 from worker import AudioToTextThread
 from engines import ENGINES
@@ -21,7 +21,7 @@ class FrontendTests(ConversionTestCase):
 
     def setUp(self):
         super().setUp()
-        self.messages = self.enterContext(patch("frontend.QMessageBox"))
+        self.messages = self.enterContext(patch("pyqt_frontend.QMessageBox"))
 
     def test_worker_does_not_create_a_message_box(self):
         AudioToTextThread(str(self.source)).run()
@@ -56,7 +56,7 @@ class FrontendTests(ConversionTestCase):
         ui.setupUi(dialog)
         ui.path = str(self.source)
         ui.engineCombo.setCurrentIndex(ui.engineCombo.findData("groq"))
-        with patch.dict(os.environ, {}, clear=True), patch("frontend.AudioToTextThread") as worker:
+        with patch.dict(os.environ, {}, clear=True), patch("pyqt_frontend.AudioToTextThread") as worker:
             ui.donustur()
         worker.assert_not_called()
         self.messages.critical.assert_called_once()
@@ -102,7 +102,7 @@ class FrontendTests(ConversionTestCase):
         dialog = QtWidgets.QDialog()
         ui = frontend.Ui_Dialog()
         ui.setupUi(dialog)
-        with patch("frontend.QFileDialog.getOpenFileName", return_value=("", "")):
+        with patch("pyqt_frontend.QFileDialog.getOpenFileName", return_value=("", "")):
             ui.pushButton_handler()
         self.assertFalse(ui.pushButton_2.isEnabled())
         dialog.close()

@@ -9,19 +9,37 @@ python -m pip install -r requirements.txt
 python proje.py
 ```
 
-Google varsayılan motor olarak korunur. Arayüzdeki **Servis / motor** listesinden
-aşağıdaki seçeneklerden biri seçilebilir. Yalnızca seçilen motor yüklenir;
-Google kullanırken diğer motorların paketleri veya anahtarları gerekmez.
+Varsayılan arayüz artık **HTML/CSS/JavaScript + pywebview (WebView2)**.
+Python ses işleme kodu arayüzden bağımsızdır. Bir web sitesi ya da Flutter
+istemcisi için ileride bu servis katmanına ayrı bir bağlantı katmanı eklenebilir;
+şimdilik yalnızca masaüstü uygulaması çalışır.
 
-| Motor | Ek kurulum | Arayüzde gerekli ayar |
-| --- | --- | --- |
-| Google | Temel `requirements.txt` yeterli | Yok; internet gerekir |
-| Faster Whisper (yerel) | `python -m pip install -r requirements-faster-whisper.txt` | Model ve CPU/NVIDIA GPU |
-| Whisper (yerel) | `python -m pip install -r requirements-whisper.txt` | Model ve CPU/NVIDIA GPU |
-| Vosk (yerel) | `python -m pip install -r requirements-vosk.txt` | Açılmış Türkçe model klasörü |
-| Groq Whisper (bulut) | `python -m pip install -r requirements-cloud.txt` | Groq API anahtarı ve model |
-| Azure Speech (bulut) | Temel `requirements.txt` yeterli | Azure Speech anahtarı ve kaynak bölgesi |
-| OpenAI (bulut) | `python -m pip install -r requirements-cloud.txt` | OpenAI API anahtarı ve model; ücretli |
+Eski PyQt arayüzü `pyqt_frontend.py` dosyasında korunur:
+
+```shell
+python pyqt_app.py
+```
+
+`requirements.txt` artık tüm tanıma motorlarını, yeni WebView arayüzünü ve
+eski PyQt arayüzünü tek komutla kurar. Motor başına ayrı paket kurulumu gerekmez.
+Eski `requirements-*.txt` dosyaları aynı ana listeye yönlendirir.
+Windows'ta Microsoft Edge **WebView2 Runtime** gerekir; modern bir tarayıcı
+motoru kullanılır. Kurulum kaynağı: [Microsoft WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
+Bu değişiklik bir EXE/kurulum dosyası üretmez; EXE dağıtımı sonraki adımdır.
+
+Google varsayılan motor olarak korunur. Arayüzdeki **Servis / motor** listesinden
+aşağıdaki seçeneklerden biri seçilebilir. Paketler kurulmuş olsa da yalnızca
+seçilen motor belleğe yüklenir. Google kullanırken diğer servislerin anahtarları gerekmez.
+
+| Motor | Arayüzde gerekli ayar |
+| --- | --- |
+| Google | Yok; internet gerekir |
+| Faster Whisper (yerel) | Model ve CPU/NVIDIA GPU |
+| Whisper (yerel) | Model ve CPU/NVIDIA GPU |
+| Vosk (yerel) | Açılmış Türkçe model klasörü |
+| Groq Whisper (bulut) | Groq API anahtarı ve model |
+| Azure Speech (bulut) | Azure Speech anahtarı ve kaynak bölgesi |
+| OpenAI (bulut) | OpenAI API anahtarı ve model; ücretli |
 
 Kurulum komutlarını PyCharm'ın proje için kullandığı sanal ortamda çalıştırın.
 Yerel motorların Python sürümü, işletim sistemi ve işlemci desteği farklıdır;
@@ -36,6 +54,18 @@ sürebilir. Model her dönüşümde bir kez yüklenir ve tüm parçalar için ku
 Vosk için [resmî model listesindeki](https://alphacephei.com/vosk/models)
 `vosk-model-small-tr-0.3` (35 MB) arşivini indirip açın; ZIP dosyasını değil,
 içinde `am`, `conf` gibi dizinlerin bulunduğu model klasörünü seçin.
+
+Python paketleri ile model ağırlıkları ayrı dosyalardır. `requirements.txt`
+paketleri kurar; bütün model boyutlarını indirmez. Yerel Whisper modellerini
+indirmek ve çalıştırmak için servis ücreti yoktur. Hugging Face'in
+`HF_TOKEN` uyarısı ödeme talebi değildir; anahtarsız indirme sınırlarını
+hatırlatır. [Hugging Face limitleri](https://huggingface.co/docs/hub/rate-limits).
+
+Yerel motorlar ayrı Python sürecinde çalışır. Böylece PyQt'nin eski C++ DLL'leri
+ile CTranslate2 gibi motorların DLL'leri aynı süreçte yüklenmez. Motor çökerse
+ana uygulama hata gösterir; WAV parçaları ana süreçte temizlenir. Model aynı
+işlemde her parça için yeniden yüklenmez. Özellikle başka bir Python betiğinden
+yerel motor çağırırken `if __name__ == "__main__":` korumasını kullanın.
 
 Anahtarlar parola alanında gizlenir, uygulama tarafından diske yazılmaz ve
 servis değiştirilince temizlenir. İsterseniz arayüz alanlarını boş bırakıp
@@ -83,7 +113,10 @@ dosyasını beraberinde getirir; Windows için ayrıca PATH ayarı gerekmez.
 Kendi FFmpeg kurulumunuzu kullanmak isterseniz `IMAGEIO_FFMPEG_EXE` ortam
 değişkenini çalıştırılabilir dosyanın tam yoluna ayarlayabilirsiniz.
 
-- Arayüz PyQt5 yerleşimleriyle oluşturulur; alanlar seçilen motora göre değişir.
+Yeni arayüzde motor ayarları, ilerleme, başarı/kısmi sonuç/hata durumu ve metin
+önizlemesi bulunur. Metin kopyalanabilir, çıktının klasörü açılabilir. Hata sonrası
+ayarlar yeniden açılır ve tekrar denenebilir. Devam eden işin geçici dosyalarını
+yarıda bırakmamak için WebView penceresi işlem bitmeden kapanmaz.
 
 Dosya seçicisindeki **Tüm dosyalar** seçeneği, listede bulunmayan uzantıları da
 seçmenizi sağlar. Destek, dosyanın gerçek içeriğine ve FFmpeg'in okuyabildiği
@@ -115,13 +148,18 @@ Kodun sorumlulukları ayrı dosyalarda tutulur:
 | --- | --- |
 | `backend.py` | WAV okuma, parçalama, konuşma tanıma, geçici dosyalar ve metni kaydetme. PyQt bağımlılığı yoktur. |
 | `engines.py` | Motor seçenekleri, ayar kontrolü, yerel model/bulut istemcisi yükleme ve Türkçe tanıma. PyQt bağımlılığı yoktur. |
+| `local_engine_process.py` | Yerel modelleri GUI'den ayrı süreçte çalıştırır, çökme kodunu okunabilir hataya çevirir. |
+| `audio_runtime.py` | Pydub'ı paketle gelen FFmpeg'e yönlendirir. |
 | `media_converter.py` | Ses/video dosyasını geçici PCM WAV'a hazırlar ve geçici dosyaları temizler. PyQt bağımlılığı yoktur. |
-| `worker.py` | WAV hazırlamayı ve backend'i QThread üzerinde çalıştırır; aşama, ilerleme, sonuç ve hataları Qt sinyalleriyle arayüze iletir. |
-| `frontend.py` | Pencere, düğmeler, dosya seçimi, ilerleme çubuğu ve kullanıcı mesajları. |
-| `proje.py` | Uygulamayı başlatan giriş noktası. |
+| `conversion_service.py` | Arayüz bağımsız iş yönetimi; motor listesi, başlatma ve düz veri olarak durum/sonuç sunar. |
+| `webview_app.py` | Web arayüzünü Python servisine bağlar; masaüstü dosya/klasör diyaloglarını yönetir. |
+| `web_ui/` | HTML, CSS ve JavaScript arayüzü; harici CDN veya font indirmesi yoktur. |
+| `proje.py` | Yeni WebView2 uygulamasını başlatır. |
+| `pyqt_frontend.py`, `worker.py`, `pyqt_app.py` | Korunan eski PyQt arayüzü, QThread adaptörü ve başlatıcısı. |
 
-Akış: `proje.py` → `frontend.py` → `worker.py`.
-Worker önce `media_converter.prepare_wav`, ardından `backend.convert_audio` çağırır.
+Yeni akış: `proje.py` → `webview_app.py` ↔ `web_ui/`.
+Python bağlantısı → `ConversionService` → `prepare_wav` → `convert_audio`.
+Eski akış: `pyqt_app.py` → `pyqt_frontend.py` → `worker.py` → aynı backend.
 
 Backend, arayüz açmadan da kullanılabilir:
 
@@ -129,18 +167,17 @@ Backend, arayüz açmadan da kullanılabilir:
 from backend import convert_audio
 from engines import RecognitionOptions
 
-result = convert_audio("kayit.wav", progress_callback=print)
-print(result.status, result.output_path)
-
-# İsteğe bağlı motor paketini kurduktan sonra:
-result = convert_audio(
-    "kayit.wav",
-    recognition_options=RecognitionOptions(engine="faster_whisper", model="tiny"),
-)
+if __name__ == "__main__":
+    result = convert_audio(
+        "kayit.wav", progress_callback=print,
+        recognition_options=RecognitionOptions(engine="faster_whisper", model="tiny"),
+    )
+    print(result.status, result.output_path)
 ```
 
-`convert_audio` eşzamanlı çalışır; arayüzden çağrılırken `worker.py` üzerinden
-çalıştırılmalıdır. Google konuşma tanıma servisi için internet bağlantısı gerekir.
+`convert_audio` eşzamanlı çalışır; arayüzden çağrılırken `ConversionService`
+veya eski Qt arayüzündeki `worker.py` üzerinden çalıştırılmalıdır.
+Google konuşma tanıma servisi için internet bağlantısı gerekir.
 Sonucun `status` alanı `success`, `partial` veya `failed` olur. Dosya hataları
 çağırana istisna olarak iletilir. İsteğe bağlı `progress_callback`, işlenen
 parçaların yüzdesini alır.
@@ -172,4 +209,12 @@ Yalnızca backend testlerini arayüz açmadan çalıştırmak için:
 
 ```shell
 python -m unittest discover -s tests -p test_backend.py -v
+```
+
+Windows'ta gerçek WebView2 penceresi, JavaScript–Python bağlantısı ve önbellekteki
+`tiny` modeliyle entegrasyon kontrolü (model önceden indirilmiş olmalı; bulut
+çağrısı yapılmaz):
+
+```shell
+python tests/smoke_webview.py
 ```
