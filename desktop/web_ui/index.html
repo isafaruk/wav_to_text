@@ -45,6 +45,12 @@
             <div id="engine-description" class="engine-note">Python bağlantısı kuruluyor.</div>
             <div id="model-row" class="field" hidden><label for="model">Model</label><select id="model"></select></div>
             <div id="device-row" class="field" hidden><label for="device">Çalışacağı aygıt</label><select id="device"><option value="cpu">CPU · İşlemci</option><option value="cuda">NVIDIA GPU · CUDA</option></select><small>GPU için uyumlu CUDA kurulumu gerekir.</small></div>
+            <details id="performance-settings" class="performance-settings" hidden>
+              <summary>Hız ve bellek ayarları</summary>
+              <div id="threads-row" class="field"><label for="cpu-threads">CPU işlem parçacığı</label><select id="cpu-threads"><option value="auto">Otomatik</option></select><small>Daha yüksek sayı her zaman daha hızlı değildir. Aynı kısa kayıtla karşılaştırın.</small></div>
+              <div id="gpu-compute-row" class="field" hidden><label for="gpu-compute">GPU bellek kullanımı</label><select id="gpu-compute"><option value="int8_float16">Daha az bellek · INT8 / FP16</option><option value="float16">Standart · FP16</option></select><small>Büyük modeller 4 GB belleğe sığmayabilir. Bellek hatasında daha küçük model seçin.</small></div>
+              <p class="engine-note">Turbo, large-v3 için daha hızlı bir alternatiftir. Kalitesini kendi kaydınızla karşılaştırın; ilk kullanımda indirilir.</p>
+            </details>
             <div id="key-row" class="field" hidden><label for="api-key">API anahtarı</label><input id="api-key" type="password" autocomplete="off" spellcheck="false"><small id="key-hint"></small></div>
             <div id="region-row" class="field" hidden><label for="region">Azure bölgesi</label><input id="region" placeholder="Örn. westeurope" autocomplete="off"><small>Veya AZURE_SPEECH_REGION ortam değişkeni.</small></div>
             <div id="path-row" class="field" hidden><label for="model-path">Türkçe Vosk model klasörü</label><div class="input-action"><input id="model-path" placeholder="Açılmış model klasörü"><button id="choose-model" class="small-button" type="button">Seç</button></div><small>Veya VOSK_MODEL_PATH ortam değişkeni.</small></div>
@@ -52,7 +58,7 @@
         </section>
 
         <div class="start-area"><button id="start" class="primary-button" disabled>Metne dönüştür <span aria-hidden="true">→</span></button>
-          <p>Çıktı, kaydın yanına TXT olarak eklenir.</p></div>
+          <p>Çıktı ve işlem sırasındaki ara kayıt, kaydın yanına yazılır.</p></div>
       </aside>
 
       <section class="result-panel" aria-labelledby="result-heading">
@@ -60,7 +66,7 @@
           <div class="result-actions"><button id="copy" class="small-button" disabled>Kopyala</button><button id="open-folder" class="small-button" disabled>Klasörü aç ↗</button></div>
         </div>
         <div class="transcript-area">
-          <div id="empty-state" class="empty-state"><div class="paper-icon" aria-hidden="true"><span></span><span></span><span></span><span></span></div><h3>Her kaydın bir hikâyesi var.</h3><p>Dönüştürme tamamlandığında metnin burada görünecek.</p><span>Motora göre işleme · Okunabilir paragraflar</span></div>
+          <div id="empty-state" class="empty-state"><div class="paper-icon" aria-hidden="true"><span></span><span></span><span></span><span></span></div><h3>Her kaydın bir hikâyesi var.</h3><p>Tamamlanan bölümler geldikçe metnin burada görünecek.</p><span>Motora göre işleme · Okunabilir paragraflar</span></div>
           <label for="transcript" class="sr-only">Dönüştürülen metin</label>
           <textarea id="transcript" readonly hidden spellcheck="false"></textarea>
         </div>
@@ -70,8 +76,10 @@
     </div>
 
     <section class="status-panel" aria-label="İşlem durumu">
-      <div class="status-heading"><span id="status-badge" class="status-badge">HAZIRLANIYOR</span><p id="stage" role="status" aria-live="polite">Uygulama başlatılıyor…</p><span id="elapsed">00:00</span><strong id="percentage">0%</strong></div>
+      <div class="status-heading"><span id="status-badge" class="status-badge">HAZIRLANIYOR</span><p id="stage" role="status" aria-live="polite">Uygulama başlatılıyor…</p><span id="elapsed">00:00</span><strong id="percentage">0%</strong><button id="cancel" class="small-button cancel-button" hidden disabled>İptal et</button></div>
       <progress id="progress" max="100" value="0" aria-label="Dönüştürme ilerlemesi"></progress>
+      <div id="job-metrics" class="job-metrics" hidden><span id="audio-time"></span><span id="remaining"></span><span id="speed"></span><span id="last-update"></span></div>
+      <p id="progress-note" class="progress-note" hidden></p>
     </section>
     <footer class="page-footer"><span>Ses / Metin</span><span>Google · Whisper · Vosk · Groq · Azure · OpenAI</span></footer>
   </main>

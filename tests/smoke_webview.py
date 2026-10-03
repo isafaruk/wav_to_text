@@ -16,6 +16,7 @@ def main():
     import time
     import traceback
     import wave
+    from threading import Event
     from unittest.mock import patch
 
     import webview
@@ -34,7 +35,7 @@ def main():
     api = DesktopApi()
     root = Path(__file__).resolve().parents[1]
     window = webview.create_window("WebView integration test", str(root / "desktop/web_ui/index.html"),
-                                   js_api=api, width=1120, height=790)
+                                   js_api=api, width=1120, height=790, focus=False)
     api._window = window
     failures = []
 
@@ -94,11 +95,64 @@ def main():
             assert not window.evaluate_js("document.querySelector('#start').disabled")
             window.evaluate_js("document.querySelector('#engine').value='faster_whisper';document.querySelector('#engine').dispatchEvent(new Event('change'))")
             assert not window.evaluate_js("document.querySelector('#device-row').hidden")
+            assert window.evaluate_js("Array.from(document.querySelector('#model').options).some(option => option.value === 'turbo')")
+            assert window.evaluate_js("document.querySelector('#cpu-threads').options.length") > 1
+            assert not window.evaluate_js("document.querySelector('#performance-settings').hidden")
+            window.evaluate_js("document.querySelector('#model').value='turbo'; document.querySelector('#cpu-threads').value='2'")
+            release = Event()
+
+            def live_conversion(path, progress, *, control, recognition_options, **kwargs):
+                assert recognition_options.model == "turbo"
+                assert recognition_options.cpu_threads == "2"
+                control.emit(phase="transcribing", duration_seconds=120)
+                control.emit(append_text="İlk bölüm. <script>window.injected = true</script>", processed_seconds=30)
+                progress(25)
+                release.wait(15)
+                control.check()
+                raise AssertionError("UI should request cancellation")
+
+            with patch("services.conversion_service.convert_audio", side_effect=live_conversion):
+                try:
+                    window.evaluate_js("document.querySelector('#start').click()")
+                    wait_for("!document.querySelector('#cancel').disabled && document.querySelector('#transcript').value.includes('İlk bölüm.')")
+                    assert not window.evaluate_js("window.injected === true")
+                    wait_for("document.querySelector('#output-path').textContent.includes('partial.txt')")
+                    wait_for("document.querySelector('#remaining').textContent.includes('≈')")
+                    assert not window.evaluate_js("document.querySelector('#copy').disabled")
+                    assert not window.evaluate_js("document.querySelector('#open-folder').disabled")
+                    assert window.evaluate_js("document.querySelector('#settings').disabled")
+                    assert api.get_state()["processed_seconds"] == 30
+                    checkpoint = Path(api.get_state()["checkpoint_path"])
+                    assert "İlk bölüm." in checkpoint.read_text(encoding="utf-8")
+                    window.evaluate_js("document.querySelector('.status-panel').scrollIntoView({block:'end'})")
+                    screenshot("webview-live.png")
+                    window.evaluate_js("document.querySelector('#cancel').click()")
+                    wait_for("document.querySelector('#status-badge').textContent === 'DURDURULUYOR'")
+                    assert window.evaluate_js("document.querySelector('#start').disabled")
+                finally:
+                    release.set()
+                wait_for("document.querySelector('#status-badge').textContent === 'İPTAL EDİLDİ'")
+                assert checkpoint.exists()
+                assert not window.evaluate_js("document.querySelector('#start').disabled")
+                assert window.evaluate_js("document.querySelector('#cancel').hidden")
+                screenshot("webview-cancelled.png")
+
+            window.evaluate_js("document.querySelector('#device').value='cuda';document.querySelector('#device').dispatchEvent(new Event('change'))")
+            assert not window.evaluate_js("document.querySelector('#gpu-compute-row').hidden")
+            assert window.evaluate_js("document.querySelector('#threads-row').hidden")
+            assert window.evaluate_js("document.querySelector('#gpu-compute').value") == "int8_float16"
+            window.evaluate_js("document.querySelector('#device').value='cpu';document.querySelector('#device').dispatchEvent(new Event('change'));document.querySelector('#model').value='tiny'")
             window.evaluate_js("document.querySelector('#start').click()")
             wait_for("document.querySelector('#status-badge').textContent === 'SONUÇ YOK'", 60)
             assert window.evaluate_js("document.querySelector('#progress').value") == 100
             assert not window.evaluate_js("document.querySelector('#start').disabled")
-            print("PASS: real WebView2, engine controls, JS/Python bridge, output, validation, cached tiny model", flush=True)
+            window.resize(780, 620)
+            wait_for("window.innerWidth < 800")
+            window.evaluate_js("document.querySelector('#performance-settings').open=true; document.querySelector('#cpu-threads').scrollIntoView({block:'center'})")
+            assert window.evaluate_js("document.querySelector('#progress').getBoundingClientRect().bottom <= window.innerHeight")
+            assert window.evaluate_js("document.querySelector('#start').getBoundingClientRect().bottom <= window.innerHeight")
+            screenshot("webview-compact.png")
+            print("PASS: WebView2, live text/ETA/checkpoint, cancellation/retry, speed controls, output, cached tiny model", flush=True)
         except Exception:
             failures.append(traceback.format_exc())
             print(failures[-1], flush=True)

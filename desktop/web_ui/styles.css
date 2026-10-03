@@ -531,6 +531,7 @@ input::placeholder {
 
 .status-heading {
   display:flex;
+  flex-wrap:wrap;
   gap:12px;
   align-items:center;
   margin-bottom:13px;
@@ -560,6 +561,45 @@ input::placeholder {
 .status-badge.partial {
   background:#f4e5c6;
   color:#987033;
+}
+
+.status-badge.cancelled,.status-badge.cancelling {
+  background:#f4e5c6;
+  color:#81632d;
+}
+
+.performance-settings {
+  margin-top:14px;
+  font-size:11px;
+  color:var(--muted);
+}
+
+.performance-settings summary {
+  cursor:pointer;
+  color:var(--accent);
+  padding:4px 0;
+}
+
+.job-metrics {
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 22px;
+  margin-top:12px;
+  color:#617369;
+  font-size:11px;
+  font-variant-numeric:tabular-nums;
+}
+
+.progress-note {
+  color:#81632d;
+  font-size:11px;
+  line-height:1.6;
+  margin:12px 0 0;
+}
+
+.cancel-button {
+  border-color:#d5b8a7;
+  color:#8b5134;
 }
 
 .status-heading p {
@@ -801,7 +841,7 @@ main {
 }
 
 @media (max-height: 700px) {
-  .intro .subtitle, .format-note, .page-footer {
+  .intro .subtitle, .intro .eyebrow, .format-note, .page-footer {
     display: none;
   }
   .intro h1 {
@@ -812,13 +852,17 @@ main {
     margin-bottom: 14px;
   }
   .file-picker {
-    min-height: 76px;
+    min-height: 42px;
+    padding: 8px;
   }
-  .file-picker svg {
+  .file-picker svg, .file-picker span {
     display: none;
   }
   .section {
     padding: 14px 17px;
+  }
+  .file-section {
+    padding: 10px 17px;
   }
   .start-area {
     padding: 12px 17px;

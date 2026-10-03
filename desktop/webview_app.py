@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from threading import Lock, Thread
 
-from services.conversion_service import ConversionService
+from services.conversion_service import ACTIVE_STATUSES, ConversionService
 
 
 class DesktopApi:
@@ -26,7 +26,7 @@ class DesktopApi:
         import webview
 
         with self._selection_lock:
-            if self._service.snapshot()["status"] == "running":
+            if self._service.snapshot()["status"] in ACTIVE_STATUSES:
                 return {"ok": False, "error": "İşlem devam ederken dosya değiştirilemez."}
             paths = self._window.create_file_dialog(
                 webview.FileDialog.OPEN, allow_multiple=False,
@@ -57,7 +57,8 @@ class DesktopApi:
                 return {"ok": False, "error": str(exc)}
 
     def open_output_folder(self):
-        output = self._service.snapshot().get("output_path")
+        state = self._service.snapshot()
+        output = state.get("output_path") or state.get("checkpoint_path")
         if not output or not Path(output).is_file():
             return {"ok": False, "error": "Kaydedilmiş bir metin dosyası bulunamadı."}
         try:
@@ -66,12 +67,15 @@ class DesktopApi:
             return {"ok": False, "error": "Çıktı klasörü açılamadı."}
         return {"ok": True}
 
+    def cancel_conversion(self):
+        return {"ok": True, "state": self._service.cancel()}
+
     def _on_closing(self):
         if self._service.try_close():
             return True
         # Closing is synchronous; schedule UI feedback after returning to the event loop.
         Thread(target=self._window.run_js, args=(
-            "window.showNotice('Kapatmadan önce devam eden işlemin tamamlanmasını bekleyin.');",
+            "window.showNotice('İşlemi iptal edip durmasını bekledikten sonra pencereyi kapatabilirsiniz.');",
         ), daemon=True).start()
         return False
 

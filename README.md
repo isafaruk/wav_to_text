@@ -48,6 +48,16 @@ GPU seçimi NVIDIA CUDA bağımlılıklarını otomatik kurmaz; uyumlu CUDA/cuDN
 kurulumu gerekir. CPU varsayılandır. Whisper ses verisini bellekten aldığı
 için bu uygulamada ayrıca sistem FFmpeg kurulumu istemez.
 
+**Hız ve bellek ayarları:** Yerel Whisper motorlarında `turbo` da seçilebilir.
+Kalite ve hız farkını aynı kısa Türkçe kayıtla karşılaştırın; ilk kullanımda
+model indirilir. Faster Whisper CPU'da INT8 kullanır. Otomatik CPU ayarı
+en fazla 8 işlem parçacığı seçer; istenirse makinenin mantıksal işlemci sayısına
+kadar elle ayarlanabilir. Standart Whisper'da otomatik seçim motorun varsayılanını
+korur; elle seçim PyTorch'a uygulanır. Daha çok parçacık her zaman daha hızlı değildir.
+Faster Whisper GPU'da varsayılan `int8_float16` ile daha az bellek kullanır;
+FP16 seçeneği de vardır. Bu, büyük modelin 4 GB GPU belleğine mutlaka sığacağı
+anlamına gelmez. Bellek hatasında daha küçük bir model seçin.
+
 Faster Whisper ve Whisper ilk kullanımda seçilen modeli indirir; sonraki
 kullanımlarda önbellekteki modelle çalışabilir. İlk başlatma bu nedenle uzun
 sürebilir. Model her dönüşümde bir kez yüklenir ve tüm parçalar için kullanılır.
@@ -150,10 +160,32 @@ dosyasını beraberinde getirir; Windows için ayrıca PATH ayarı gerekmez.
 Kendi FFmpeg kurulumunuzu kullanmak isterseniz `IMAGEIO_FFMPEG_EXE` ortam
 değişkenini çalıştırılabilir dosyanın tam yoluna ayarlayabilirsiniz.
 
-Yeni arayüzde motor ayarları, ilerleme, başarı/kısmi sonuç/hata durumu ve metin
-önizlemesi bulunur. Metin kopyalanabilir, çıktının klasörü açılabilir. Hata sonrası
-ayarlar yeniden açılır ve tekrar denenebilir. Devam eden işin geçici dosyalarını
-yarıda bırakmamak için WebView penceresi işlem bitmeden kapanmaz.
+Yeni arayüzde WAV hazırlama, model yükleme, tanıma ve kaydetme aşamaları ayrı
+gösterilir. İşlenen/toplam ses süresi, geçen süre, yaklaşık kalan süre, işlem hızı
+ve son ilerleme bildiriminin yaşı izlenebilir. Kalan süre model yükleme süresini
+hariç tutan ortalama tanıma hızından hesaplanır; kesin bitiş saati değildir.
+Henüz ilerleme yokken veya motor ilerleme sağlamıyorken sahte yüzde gösterilmez.
+
+Faster Whisper'ın tamamlanan bölümleri ve Vosk'un tamamlanan ifadeleri canlı
+görüntülenir. Bulut motorlarında her istek bittiğinde metin eklenir. Standart
+Whisper, mevcut bağlantıda ara metin/ilerleme sağlamaz; sonuç döndüğünde gösterilir.
+Metin işlem sürerken de kopyalanabilir.
+
+Tamamlanan metin, kaynak dosyanın yanında benzersiz
+`kayit.<işlem-kodu>.partial.txt` dosyasına UTF-8 olarak eklenir ve her metin
+güncellemesinde diske aktarılır. Bu dosya kısmi sonuç olarak işaretlidir;
+önceki kayıtlar ezilmez. Nihai TXT başarıyla yazıldıktan sonra o işin ara kaydı
+silinir. İptal veya hatada ara kayıt korunur; klasörü arayüzden açılabilir.
+Ara kayıt yazılamazsa uyarı gösterilir ve canlı metin kopyalanabilir.
+
+**İptal et**, WAV hazırlayan FFmpeg'i veya model yükleyen/çalıştıran yerel süreci
+durdurur ve geçici dosyaları temizler. Bulut motorlarında devam eden isteğin
+yanıtı/zaman aşımı beklenir, sonraki istek başlatılmaz. Nihai dosyanın kaydedilmesi
+başladıktan sonra iptal kapatılır. İşlem durana kadar yeni iş başlatılamaz ve
+pencere kapatılamaz; ardından yeniden deneme mümkündür. Ara kayıt yalnızca metin
+kurtarma içindir: duraklat/devam et veya yeniden açınca kaldığı yerden sürdürme
+özelliği değildir. Bu kontroller `app.py` ile açılan WebView arayüzündedir;
+eski PyQt arayüzünün kontrolleri korunur.
 
 Dosya seçicisindeki **Tüm dosyalar** seçeneği, listede bulunmayan uzantıları da
 seçmenizi sağlar. Destek, dosyanın gerçek içeriğine ve FFmpeg'in okuyabildiği
@@ -219,7 +251,9 @@ Kodun sorumlulukları ayrı dosyalarda tutulur:
 | `core/local_engine_process.py` | Yerel modelleri GUI'den ayrı süreçte çalıştırır, çökme kodunu okunabilir hataya çevirir. |
 | `core/audio_runtime.py` | Pydub'ı paketle gelen FFmpeg'e yönlendirir. |
 | `core/media_converter.py` | Ses/video dosyasını geçici PCM WAV'a hazırlar ve geçici dosyaları temizler. PyQt bağımlılığı yoktur. |
-| `services/conversion_service.py` | Arayüz bağımsız iş yönetimi; motor listesi, başlatma ve düz veri olarak durum/sonuç sunar. |
+| `core/job_control.py` | İptal isteği ve motor olaylarının arayüzden bağımsız aktarımı. |
+| `core/transcript_checkpoint.py` | Tamamlanan metni benzersiz bir kısmi TXT dosyasında korur. |
+| `services/conversion_service.py` | İş yönetimi, iptal, canlı metin, ara kayıt, süre/hız tahmini ve durum/sonuç sunar. |
 | `desktop/webview_app.py` | Web arayüzünü Python servisine bağlar; masaüstü dosya/klasör diyaloglarını yönetir. |
 | `desktop/web_ui/` | HTML, CSS ve JavaScript arayüzü; harici CDN veya font indirmesi yoktur. |
 | `app.py` | Yeni WebView2 uygulamasını başlatır. |

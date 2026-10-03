@@ -26,7 +26,7 @@ class EngineSpec:
     key_env: str = ""
 
 
-LOCAL_MODELS = ("tiny", "base", "small", "medium", "large-v3")
+LOCAL_MODELS = ("tiny", "base", "small", "medium", "large-v3", "turbo")
 ENGINES = {
     "google": EngineSpec("Google", "İnternet gerekir; ayrıca API anahtarı istemez. Ses 50 saniyelik parçalarla işlenir."),
     "faster_whisper": EngineSpec(
@@ -63,6 +63,8 @@ class RecognitionOptions:
     api_key: str = field(default="", repr=False)
     region: str = ""
     model_path: str = ""
+    cpu_threads: str = "auto"
+    gpu_compute_type: str = "int8_float16"
 
 
 class EngineConfigurationError(ValueError):
@@ -90,6 +92,14 @@ def validate_options(options):
         raise EngineConfigurationError("Seçilen model bu tanıma motoru için desteklenmiyor.")
     if options.device not in ("cpu", "cuda"):
         raise EngineConfigurationError("İşlem aygıtı CPU veya NVIDIA GPU olmalıdır.")
+    if not isinstance(options.cpu_threads, str) or not (
+        options.cpu_threads == "auto" or
+        (options.cpu_threads.isascii() and options.cpu_threads.isdigit() and
+         1 <= int(options.cpu_threads) <= (os.cpu_count() or 1))
+    ):
+        raise EngineConfigurationError("CPU işlem parçacığı sayısı 1 ile {0} arasında olmalıdır.".format(os.cpu_count() or 1))
+    if options.gpu_compute_type not in ("int8_float16", "float16"):
+        raise EngineConfigurationError("GPU hesaplama biçimi geçersiz.")
     if spec.key_env and not _api_key(options):
         raise EngineConfigurationError(
             "API anahtarını girin veya {0} ortam değişkenini tanımlayın.".format(spec.key_env))
@@ -119,20 +129,26 @@ def _audio_array(audio, np):
     return np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
 
 
-def _segment_paragraphs(segments, duration=0, progress_callback=None):
+def _segment_paragraphs(segments, duration=0, progress_callback=None, event_callback=None):
     """Group complete model segments; never restart recognition for formatting."""
     paragraphs, words = [], []
     paragraph_start = None
     for start, end, text in segments:
         text = text.strip()
         if text:
+            separator = " " if words else ""
             if paragraph_start is not None and start - paragraph_start >= 60:
                 paragraphs.append(" ".join(words))
                 words = []
                 paragraph_start = None
+                separator = "\n\n"
             if paragraph_start is None:
                 paragraph_start = start
             words.append(text)
+            if event_callback is not None:
+                event_callback({"append_text": separator + text})
+        if event_callback is not None and duration > 0:
+            event_callback({"processed_seconds": min(duration, max(0, end))})
         if progress_callback is not None and duration > 0:
             progress_callback(min(99, int(end * 100 / duration)))
     if words:
@@ -148,10 +164,13 @@ def _local_whisper(options):
         if options.engine == "faster_whisper":
             model = module.WhisperModel(
                 model_name, device=options.device,
-                compute_type="int8" if options.device == "cpu" else "float16",
-                cpu_threads=min(4, os.cpu_count() or 1),
+                compute_type="int8" if options.device == "cpu" else options.gpu_compute_type,
+                cpu_threads=(min(8, os.cpu_count() or 1) if options.cpu_threads == "auto"
+                             else int(options.cpu_threads)),
             )
         else:
+            if options.device == "cpu" and options.cpu_threads != "auto":
+                _load("torch").set_num_threads(int(options.cpu_threads))
             model = module.load_model(model_name, device=options.device)
     except Exception as exc:
         raise EngineConfigurationError(
@@ -159,7 +178,7 @@ def _local_whisper(options):
             "aygıt desteğini kontrol edin; CPU ve daha küçük bir model deneyin."
         ) from exc
 
-    def transcribe(audio, progress_callback=None):
+    def transcribe(audio, progress_callback=None, event_callback=None):
         if isinstance(audio, str):
             # Decode our prepared WAV in the child. This also avoids depending on
             # PyAV's changing file-open API or a system ffmpeg executable.
@@ -170,13 +189,16 @@ def _local_whisper(options):
             segments, info = model.transcribe(samples, language="tr", task="transcribe", beam_size=5)
             return _segment_paragraphs(
                 ((segment.start, segment.end, segment.text) for segment in segments),
-                info.duration, progress_callback)
+                info.duration, progress_callback, event_callback)
         result = model.transcribe(
             samples, language="tr", task="transcribe", fp16=options.device == "cuda"
         )
         if result.get("segments"):
             return _segment_paragraphs(
-                (segment["start"], segment["end"], segment["text"]) for segment in result["segments"])
+                ((segment["start"], segment["end"], segment["text"]) for segment in result["segments"]),
+                event_callback=event_callback)
+        if event_callback is not None:
+            event_callback({"append_text": result["text"]})
         return result["text"]
 
     return transcribe
@@ -189,7 +211,7 @@ def _vosk(options):
     except Exception as exc:
         raise EngineConfigurationError("Vosk modeli yüklenemedi. Açılmış Türkçe model klasörünü seçin.") from exc
 
-    def transcribe(audio, progress_callback=None):
+    def transcribe(audio, progress_callback=None, event_callback=None):
         if isinstance(audio, str):
             with sr.AudioFile(audio) as source:
                 recognizer = module.KaldiRecognizer(model, 16000)
@@ -203,10 +225,20 @@ def _vosk(options):
                     if source.SAMPLE_RATE != 16000:
                         pcm, rate_state = ratecv(pcm, 2, 1, source.SAMPLE_RATE, 16000, rate_state)
                     if recognizer.AcceptWaveform(pcm):
-                        parts.append(json.loads(recognizer.Result()).get("text", ""))
+                        text = json.loads(recognizer.Result()).get("text", "").strip()
+                        if text:
+                            if event_callback is not None:
+                                event_callback({"append_text": ("\n\n" if parts else "") + text})
+                            parts.append(text)
                     if progress_callback is not None and source.FRAME_COUNT:
                         progress_callback(min(99, processed_frames * 100 // source.FRAME_COUNT))
-                parts.append(json.loads(recognizer.FinalResult()).get("text", ""))
+                    if event_callback is not None:
+                        event_callback({"processed_seconds": processed_frames / source.SAMPLE_RATE})
+                text = json.loads(recognizer.FinalResult()).get("text", "").strip()
+                if text:
+                    if event_callback is not None:
+                        event_callback({"append_text": ("\n\n" if parts else "") + text})
+                    parts.append(text)
                 return "\n\n".join(part.strip() for part in parts if part.strip())
         recognizer = module.KaldiRecognizer(model, 16000)
         raw = audio.get_raw_data(convert_rate=16000, convert_width=2)
@@ -221,13 +253,14 @@ def _vosk(options):
 
 
 @contextmanager
-def recognition_session(recognizer, options, *, progress_callback=None):
+def recognition_session(recognizer, options, *, progress_callback=None, control=None):
     """Load one model/client per conversion, reused for all its audio chunks."""
     validate_options(options)
     if options.engine == "google":
         yield lambda audio: recognizer.recognize_google(audio, language="tr-tr")
     elif options.engine in LOCAL_ENGINES:
-        with local_session(options, progress_callback=progress_callback) as transcribe:
+        extra = {"control": control} if control is not None else {}
+        with local_session(options, progress_callback=progress_callback, **extra) as transcribe:
             yield transcribe
     elif options.engine == "azure":
         yield lambda audio: recognizer.recognize_azure(
@@ -246,7 +279,13 @@ def recognition_session(recognizer, options, *, progress_callback=None):
                 nonlocal last_request
                 # Space Groq calls for the documented Free plan's 20 requests/minute.
                 if options.engine == "groq" and last_request is not None:
-                    time.sleep(max(0, 3.1 - (time.monotonic() - last_request)))
+                    delay = max(0, 3.1 - (time.monotonic() - last_request))
+                    if control is None:
+                        time.sleep(delay)
+                    else:
+                        control.cancelled.wait(delay)
+                if control is not None:
+                    control.check()
                 last_request = time.monotonic()
                 try:
                     result = client.audio.transcriptions.create(

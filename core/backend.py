@@ -35,6 +35,7 @@ def convert_audio(
     *,
     output_source_path: str | None = None,
     recognition_options: RecognitionOptions | None = None,
+    control=None,
 ) -> ConversionResult:
     """Convert a WAV file and save its transcript.
 
@@ -46,8 +47,12 @@ def convert_audio(
     For temporary WAV inputs, output_source_path selects the original media
     path whose directory and stem are used for the transcript.
     recognition_options selects the engine; omitted options preserve Google.
+    control optionally checks cancellation and emits stage, audio-time and text
+    events. The caller owns recovery storage; cancellation raises ConversionCancelled.
     """
     options = recognition_options or RecognitionOptions()
+    if control is not None:
+        control.check()
     validate_options(options)
     local = options.engine in LOCAL_ENGINES
     r = sr.Recognizer()
@@ -56,12 +61,17 @@ def convert_audio(
         # Only inspect the header here. Native decoders read the file in the child.
         with sr.AudioFile(file_path) as source:
             chunks = [str(Path(file_path).resolve())] if source.FRAME_COUNT else []
+            duration = source.FRAME_COUNT / source.SAMPLE_RATE
     else:
         with open(file_path, "rb") as input_file:
             myaudio = AudioSegment.from_file(input_file, 'wav')
         if options.engine in CLOUD_UPLOAD_ENGINES:
             myaudio = myaudio.set_channels(1).set_frame_rate(UPLOAD_SAMPLE_RATE).set_sample_width(UPLOAD_SAMPLE_WIDTH)
         chunks = make_chunks(myaudio, chunk_duration_ms(options.engine))
+        duration = len(myaudio) / 1000
+    if control is not None:
+        control.check()
+        control.emit(duration_seconds=duration, phase="loading" if local else "transcribing")
     if not chunks:
         return ConversionResult("failed", "", 0, 0, None,
                                 ("WAV dosyası ses verisi içermiyor.",))
@@ -79,9 +89,13 @@ def convert_audio(
             last_progress = value
 
     session_args = {"progress_callback": local_progress} if local else {}
+    if control is not None:
+        session_args["control"] = control
     with recognition_session(r, options, **session_args) as transcribe, \
             (nullcontext(None) if local else TemporaryDirectory(prefix="wav_to_text_")) as temp_dir:
         for i, chunk in enumerate(chunks):
+            if control is not None:
+                control.check()
             if local:
                 audio = chunk
             else:
@@ -90,6 +104,8 @@ def convert_audio(
                     chunk.export(chunk_file, format='wav')
                 with sr.AudioFile(chunk_name) as source:
                     audio = r.record(source)
+            if control is not None:
+                control.check()
             try:
                 transcript = transcribe(audio).strip()
                 if not transcript:
@@ -109,6 +125,13 @@ def convert_audio(
             else:
                 text_parts.append(format_paragraphs(transcript))
                 successful_chunks += 1
+            if control is not None:
+                if not local:
+                    control.emit(append_text=("\n\n" if i else "") + text_parts[-1],
+                                 processed_seconds=min(duration, (i + 1) * chunk_duration_ms(options.engine) / 1000))
+                else:
+                    control.emit(processed_seconds=duration)
+                control.check()
             if progress_callback is not None:
                 progress_callback((i + 1) * 100 // len(chunks))
 
@@ -117,6 +140,9 @@ def convert_audio(
     if not successful_chunks:
         return ConversionResult("failed", text, 0, len(chunks), None, tuple(errors))
 
+    if control is not None:
+        control.check()
+        control.emit(phase="saving")
     output_base = os.path.splitext(output_source_path or file_path)[0]
     dosya_adi = output_base + ".txt"
 
@@ -128,6 +154,10 @@ def convert_audio(
 
     with open(dosya_adi, "w", encoding="utf-8") as dosya:
         dosya.write(text)
+        if control is not None:
+            # Recovery storage is removed only after the final text is durable.
+            dosya.flush()
+            os.fsync(dosya.fileno())
     status = "success" if successful_chunks == len(chunks) else "partial"
     return ConversionResult(status, text, successful_chunks, len(chunks),
                             dosya_adi, tuple(errors))

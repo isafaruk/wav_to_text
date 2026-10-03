@@ -85,7 +85,7 @@ class EngineTests(ConversionTestCase):
         ) as array, patch("core.backend.AudioSegment.from_file") as decode, patch("core.engines.os.cpu_count", return_value=8):
             result = backend.convert_audio(str(self.source), progress.append, recognition_options=RecognitionOptions(
                 engine="faster_whisper", model="base"))
-        module.WhisperModel.assert_called_once_with("base", device="cpu", compute_type="int8", cpu_threads=4)
+        module.WhisperModel.assert_called_once_with("base", device="cpu", compute_type="int8", cpu_threads=8)
         module.WhisperModel.return_value.transcribe.assert_called_once_with(
             "samples", language="tr", task="transcribe", beam_size=5)
         self.assertEqual(120100 * 8 * 2, len(array.call_args.args[0].frame_data))
