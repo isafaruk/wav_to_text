@@ -196,6 +196,21 @@ class ConversionTests(unittest.TestCase):
                     self.assertIsNone(result.output_path)
                     self.assertFalse(self.source.with_suffix(".txt").exists())
 
+    def test_transcript_chunks_are_separated_by_spaces(self):
+        self.write_wav(self.source, duration_ms=50100)
+        self.recognize.side_effect = ["  first ", " second  "]
+        results, errors = self.run_worker()
+        self.assertEqual([], errors)
+        self.assertEqual("first second", results[0].text)
+        self.assertEqual("first second", Path(results[0].output_path).read_text())
+
+    def test_unrecognized_chunks_remain_separated_in_partial_text(self):
+        self.write_wav(self.source, duration_ms=100100)
+        self.recognize.side_effect = ["first", proje.sr.UnknownValueError(), "second"]
+        results, errors = self.run_worker()
+        self.assertEqual([], errors)
+        self.assertEqual("first [2. parça: Ses algılanamadı.] second", results[0].text)
+
     def test_empty_wav_does_not_claim_success_or_write_output(self):
         self.write_wav(self.source, duration_ms=0)
         results, errors = self.run_worker()

@@ -60,7 +60,7 @@ class AudioToTextThread(QtCore.QThread):
                                     ("WAV dosyası ses verisi içermiyor.",))
         adet = int(len(myaudio) / chunk_length_ms) + 1
         yuzde = (100 / adet)
-        text = ""
+        text_parts = []
         successful_chunks = 0
         errors = []
         with TemporaryDirectory(prefix="wav_to_text_") as temp_dir:
@@ -79,19 +79,20 @@ class AudioToTextThread(QtCore.QThread):
                     except sr.UnknownValueError:
                         message = "{0}. parça: Ses algılanamadı.".format(i + 1)
                         errors.append(message)
-                        text += "[{0}]".format(message)
+                        text_parts.append("[{0}]".format(message))
                     except TimeoutError:
                         message = "{0}. parça: Tanıma isteği zaman aşımına uğradı.".format(i + 1)
                         errors.append(message)
-                        text += "[{0}]".format(message)
+                        text_parts.append("[{0}]".format(message))
                     except sr.RequestError as e:
                         message = "{0}. parça: Tanıma servisine ulaşılamadı; {1}".format(i + 1, e)
                         errors.append(message)
-                        text += "[{0}]".format(message)
+                        text_parts.append("[{0}]".format(message))
                     else:
-                        text += transcript
+                        text_parts.append(transcript)
                         successful_chunks += 1
 
+        text = " ".join(text_parts)
         if not successful_chunks:
             return ConversionResult("failed", text, 0, len(chunks), None, tuple(errors))
 
