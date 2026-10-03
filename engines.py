@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from audioop import ratecv
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from importlib import import_module
@@ -13,6 +14,7 @@ import time
 
 import speech_recognition as sr
 
+from audio_policy import LOCAL_ENGINES
 from local_engine_process import local_session
 
 
@@ -26,29 +28,29 @@ class EngineSpec:
 
 LOCAL_MODELS = ("tiny", "base", "small", "medium", "large-v3")
 ENGINES = {
-    "google": EngineSpec("Google", "Mevcut servis. İnternet gerekir; ayrıca API anahtarı istemez."),
+    "google": EngineSpec("Google", "İnternet gerekir; ayrıca API anahtarı istemez. Ses 50 saniyelik parçalarla işlenir."),
     "faster_whisper": EngineSpec(
         "Faster Whisper (yerel)",
-        "Ses bilgisayarda işlenir. İlk kullanımda model indirilir. "
+        "Kayıt bilgisayarda tek tanıma oturumunda işlenir. İlk kullanımda model indirilir. "
         "Eski bilgisayarlarda tiny/base ve CPU ile başlayın.", LOCAL_MODELS),
     "whisper": EngineSpec(
         "Whisper (yerel)",
-        "Ses bilgisayarda işlenir. İlk kullanımda model indirilir. "
+        "Kayıt bilgisayarda tek tanıma oturumunda işlenir. İlk kullanımda model indirilir. "
         "Büyük modeller daha fazla bellek ve işlem gücü ister.", LOCAL_MODELS),
     "vosk": EngineSpec(
         "Vosk (yerel, hafif)",
-        "Çevrimdışı çalışır. İndirilip açılmış Türkçe Vosk modelinin klasörünü seçin."),
+        "Sesi küçük bloklarla, kesintisiz okur. İndirilip açılmış Türkçe Vosk modelinin klasörünü seçin."),
     "groq": EngineSpec(
         "Groq Whisper (bulut)",
-        "Ses Groq'a gönderilir. Ücretsiz kotalı planı vardır; hesabınızın limitleri geçerlidir.",
+        "Ses dosya boyutuna göre bölünüp Groq'a gönderilir. Ücretsiz kotalı planı vardır.",
         ("whisper-large-v3-turbo", "whisper-large-v3"), "GROQ_API_KEY"),
     "azure": EngineSpec(
         "Azure Speech (bulut)",
-        "Ses Azure'a gönderilir. F0 planında ücretsiz kota vardır; anahtar ve bölge gerekir.",
+        "Ses 50 saniyelik parçalarla Azure'a gönderilir. F0 ücretsiz kotalıdır; anahtar ve bölge gerekir.",
         key_env="AZURE_SPEECH_KEY"),
     "openai": EngineSpec(
         "OpenAI (bulut, ücretli)",
-        "Ses OpenAI'a gönderilir. API kullanımı ücretlidir; API anahtarı gerekir.",
+        "Ses dosya boyutuna göre bölünüp OpenAI'a gönderilir. API kullanımı ücretlidir; anahtar gerekir.",
         ("whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe"), "OPENAI_API_KEY"),
 }
 
@@ -117,6 +119,27 @@ def _audio_array(audio, np):
     return np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
 
 
+def _segment_paragraphs(segments, duration=0, progress_callback=None):
+    """Group complete model segments; never restart recognition for formatting."""
+    paragraphs, words = [], []
+    paragraph_start = None
+    for start, end, text in segments:
+        text = text.strip()
+        if text:
+            if paragraph_start is not None and start - paragraph_start >= 60:
+                paragraphs.append(" ".join(words))
+                words = []
+                paragraph_start = None
+            if paragraph_start is None:
+                paragraph_start = start
+            words.append(text)
+        if progress_callback is not None and duration > 0:
+            progress_callback(min(99, int(end * 100 / duration)))
+    if words:
+        paragraphs.append(" ".join(words))
+    return "\n\n".join(paragraphs)
+
+
 def _local_whisper(options):
     np = _load("numpy")
     module = _load("faster_whisper" if options.engine == "faster_whisper" else "whisper")
@@ -136,14 +159,25 @@ def _local_whisper(options):
             "aygıt desteğini kontrol edin; CPU ve daha küçük bir model deneyin."
         ) from exc
 
-    def transcribe(audio):
+    def transcribe(audio, progress_callback=None):
+        if isinstance(audio, str):
+            # Decode our prepared WAV in the child. This also avoids depending on
+            # PyAV's changing file-open API or a system ffmpeg executable.
+            with sr.AudioFile(audio) as source:
+                audio = sr.Recognizer().record(source)
         samples = _audio_array(audio, np)
         if options.engine == "faster_whisper":
-            segments, _ = model.transcribe(samples, language="tr", task="transcribe", beam_size=5)
-            return " ".join(segment.text.strip() for segment in segments).strip()
-        return model.transcribe(
+            segments, info = model.transcribe(samples, language="tr", task="transcribe", beam_size=5)
+            return _segment_paragraphs(
+                ((segment.start, segment.end, segment.text) for segment in segments),
+                info.duration, progress_callback)
+        result = model.transcribe(
             samples, language="tr", task="transcribe", fp16=options.device == "cuda"
-        )["text"]
+        )
+        if result.get("segments"):
+            return _segment_paragraphs(
+                (segment["start"], segment["end"], segment["text"]) for segment in result["segments"])
+        return result["text"]
 
     return transcribe
 
@@ -155,7 +189,25 @@ def _vosk(options):
     except Exception as exc:
         raise EngineConfigurationError("Vosk modeli yüklenemedi. Açılmış Türkçe model klasörünü seçin.") from exc
 
-    def transcribe(audio):
+    def transcribe(audio, progress_callback=None):
+        if isinstance(audio, str):
+            with sr.AudioFile(audio) as source:
+                recognizer = module.KaldiRecognizer(model, 16000)
+                parts = []
+                processed_frames = 0
+                rate_state = None
+                while raw := source.stream.read(4000):
+                    processed_frames += len(raw) // source.SAMPLE_WIDTH
+                    # AudioFile already mixes stereo; AudioData handles PCM widths.
+                    pcm = sr.AudioData(raw, source.SAMPLE_RATE, source.SAMPLE_WIDTH).get_raw_data(convert_width=2)
+                    if source.SAMPLE_RATE != 16000:
+                        pcm, rate_state = ratecv(pcm, 2, 1, source.SAMPLE_RATE, 16000, rate_state)
+                    if recognizer.AcceptWaveform(pcm):
+                        parts.append(json.loads(recognizer.Result()).get("text", ""))
+                    if progress_callback is not None and source.FRAME_COUNT:
+                        progress_callback(min(99, processed_frames * 100 // source.FRAME_COUNT))
+                parts.append(json.loads(recognizer.FinalResult()).get("text", ""))
+                return "\n\n".join(part.strip() for part in parts if part.strip())
         recognizer = module.KaldiRecognizer(model, 16000)
         raw = audio.get_raw_data(convert_rate=16000, convert_width=2)
         parts = []
@@ -169,13 +221,13 @@ def _vosk(options):
 
 
 @contextmanager
-def recognition_session(recognizer, options):
+def recognition_session(recognizer, options, *, progress_callback=None):
     """Load one model/client per conversion, reused for all its audio chunks."""
     validate_options(options)
     if options.engine == "google":
         yield lambda audio: recognizer.recognize_google(audio, language="tr-tr")
-    elif options.engine in ("faster_whisper", "whisper", "vosk"):
-        with local_session(options) as transcribe:
+    elif options.engine in LOCAL_ENGINES:
+        with local_session(options, progress_callback=progress_callback) as transcribe:
             yield transcribe
     elif options.engine == "azure":
         yield lambda audio: recognizer.recognize_azure(

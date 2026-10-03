@@ -23,8 +23,9 @@ class EngineTests(ConversionTestCase):
         # Model adapters are unit-tested in-process with fake native libraries.
         # Real process isolation is covered separately in test_local_engine_process.
         @contextmanager
-        def model_session(options):
-            yield engines._vosk(options) if options.engine == "vosk" else engines._local_whisper(options)
+        def model_session(options, progress_callback=None):
+            recognize = engines._vosk(options) if options.engine == "vosk" else engines._local_whisper(options)
+            yield lambda audio: recognize(audio, progress_callback=progress_callback)
 
         self.enterContext(patch("engines.local_session", model_session))
 
@@ -71,23 +72,27 @@ class EngineTests(ConversionTestCase):
                     self.assertEqual("merhaba", transcribe(self.audio))
                 azure.assert_called_with(self.audio, key=key, location=region, language="tr-TR")
 
-    def test_faster_whisper_loads_once_for_multiple_chunks_on_cpu(self):
-        self.write_wav(self.source, duration_ms=50100)
+    def test_faster_whisper_receives_whole_file_and_reports_segment_progress(self):
+        self.write_wav(self.source, duration_ms=120100)
         module = MagicMock()
-        module.WhisperModel.return_value.transcribe.side_effect = [
-            (iter([SimpleNamespace(text=" ilk "), SimpleNamespace(text=" parça ")]), None),
-            (iter([SimpleNamespace(text=" ikinci ")]), None),
-        ]
+        module.WhisperModel.return_value.transcribe.return_value = (
+            iter([SimpleNamespace(start=0, end=30, text=" ilk parça "),
+                  SimpleNamespace(start=70, end=120, text=" ikinci ")]),
+            SimpleNamespace(duration=120.1))
+        progress = []
         with patch("engines.import_module", return_value=module), patch(
             "engines._audio_array", return_value="samples"
-        ), patch("engines.os.cpu_count", return_value=8):
-            result = backend.convert_audio(str(self.source), recognition_options=RecognitionOptions(
+        ) as array, patch("backend.AudioSegment.from_file") as decode, patch("engines.os.cpu_count", return_value=8):
+            result = backend.convert_audio(str(self.source), progress.append, recognition_options=RecognitionOptions(
                 engine="faster_whisper", model="base"))
         module.WhisperModel.assert_called_once_with("base", device="cpu", compute_type="int8", cpu_threads=4)
-        self.assertEqual(2, module.WhisperModel.return_value.transcribe.call_count)
-        module.WhisperModel.return_value.transcribe.assert_called_with(
+        module.WhisperModel.return_value.transcribe.assert_called_once_with(
             "samples", language="tr", task="transcribe", beam_size=5)
+        self.assertEqual(120100 * 8 * 2, len(array.call_args.args[0].frame_data))
+        decode.assert_not_called()
         self.assertEqual("ilk parça\n\nikinci", result.text)
+        self.assertEqual(1, result.total_chunks)
+        self.assertEqual([24, 99, 100], progress)
         self.recognize.assert_not_called()
 
     def test_original_whisper_is_loaded_once_and_uses_float32_on_cpu(self):
@@ -109,6 +114,24 @@ class EngineTests(ConversionTestCase):
             EngineConfigurationError, "daha küçük bir model"
         ), recognition_session(self.recognizer, RecognitionOptions(engine="faster_whisper")):
             self.fail("The model did not load")
+
+    def test_original_whisper_receives_all_audio_in_one_call(self):
+        self.write_wav(self.source, duration_ms=60100)
+        module = MagicMock()
+        module.load_model.return_value.transcribe.return_value = {
+            "text": "ilk son", "segments": [
+                {"start": 0, "end": 1, "text": "ilk"},
+                {"start": 60, "end": 60.1, "text": "son"},
+            ]}
+        with patch("engines.import_module", return_value=module), patch(
+            "engines._audio_array", return_value="samples"
+        ) as array:
+            result = backend.convert_audio(str(self.source), recognition_options=RecognitionOptions(engine="whisper"))
+        audio = array.call_args.args[0]
+        self.assertEqual(60100 * 8 * 2, len(audio.frame_data))
+        module.load_model.return_value.transcribe.assert_called_once()
+        self.assertEqual("ilk\n\nson", result.text)
+        self.assertEqual(1, result.total_chunks)
 
     def test_vosk_keeps_intermediate_utterances_and_reuses_model(self):
         module = MagicMock()
@@ -136,6 +159,28 @@ class EngineTests(ConversionTestCase):
 
         sdk = MagicMock(APIError=APIError, APITimeoutError=APITimeoutError)
         return sdk
+
+    def test_vosk_reads_file_in_blocks_without_resetting_recognizer(self):
+        self.write_wav(self.source, duration_ms=1100)
+        module = MagicMock()
+        kaldi = module.KaldiRecognizer.return_value
+        kaldi.AcceptWaveform.side_effect = [True, False, False]
+        kaldi.Result.return_value = json.dumps({"text": "ilk"})
+        kaldi.FinalResult.return_value = json.dumps({"text": "son"})
+        progress = []
+        with patch("engines.import_module", return_value=module):
+            result = backend.convert_audio(str(self.source), progress.append, recognition_options=RecognitionOptions(
+                engine="vosk", model_path=str(self.root)))
+        module.KaldiRecognizer.assert_called_once_with(module.Model.return_value, 16000)
+        blocks = [call.args[0] for call in kaldi.AcceptWaveform.call_args_list]
+        self.assertEqual([15998, 16000, 3200], [len(block) for block in blocks])
+        with sr.AudioFile(str(self.source)) as source:
+            expected = sr.Recognizer().record(source).get_raw_data(convert_rate=16000, convert_width=2)
+        self.assertEqual(expected, b"".join(blocks))
+        kaldi.FinalResult.assert_called_once()
+        self.assertEqual("ilk\n\nson", result.text)
+        self.assertEqual([45, 90, 99, 100], progress)
+        self.assertEqual(1, result.total_chunks)
 
     def test_cloud_clients_reuse_connection_select_model_and_close(self):
         for engine, client_name, base_url in [
@@ -177,7 +222,9 @@ class EngineTests(ConversionTestCase):
                     error.status_code = code
                     client = getattr(sdk, client_name).return_value.__enter__.return_value
                     client.audio.transcriptions.create.side_effect = [SimpleNamespace(text="ilk"), error]
-                    with patch("engines.import_module", return_value=sdk), patch("engines.time.sleep"):
+                    with patch("engines.import_module", return_value=sdk), patch("engines.time.sleep"), patch(
+                        "audio_policy.MAX_UPLOAD_BYTES", 1_600_044
+                    ):
                         result = backend.convert_audio(str(self.source), recognition_options=RecognitionOptions(
                             engine=engine, api_key="secret-key"))
                     self.assertEqual("partial", result.status)

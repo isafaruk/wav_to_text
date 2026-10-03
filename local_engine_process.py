@@ -19,7 +19,21 @@ def _serve(connection, options):
             audio = connection.recv()
             if audio is None:
                 break
-            connection.send(("text", transcribe(audio)))
+            if isinstance(audio, str):
+                last_progress = -1
+
+                def progress(value):
+                    nonlocal last_progress
+                    value = max(0, min(99, int(value)))
+                    if value > last_progress:
+                        connection.send(("progress", value))
+                        last_progress = value
+
+                progress(0)
+                text = transcribe(audio, progress_callback=progress)
+            else:
+                text = transcribe(audio)
+            connection.send(("text", text))
     except EOFError:
         pass
     except Exception as exc:
@@ -40,12 +54,17 @@ def _crashed(process):
         "CPU ve küçük bir model deneyin; sürücü ve çalışma ortamını kontrol edin.".format(detail))
 
 
-def _receive(connection, process, expected):
+def _receive(connection, process, expected, progress_callback=None):
     try:
-        while not connection.poll(0.1):
-            if not process.is_alive():
-                raise _crashed(process)
-        kind, value = connection.recv()
+        while True:
+            while not connection.poll(0.1):
+                if not process.is_alive():
+                    raise _crashed(process)
+            kind, value = connection.recv()
+            if kind != "progress":
+                break
+            if progress_callback is not None:
+                progress_callback(value)
     except (EOFError, OSError) as exc:
         raise _crashed(process) from exc
     if kind == "error":
@@ -56,7 +75,7 @@ def _receive(connection, process, expected):
 
 
 @contextmanager
-def local_session(options):
+def local_session(options, progress_callback=None):
     """Start one model process, reuse it for all chunks, always release it."""
     context = multiprocessing.get_context("spawn")
     connection, child_connection = context.Pipe()
@@ -73,7 +92,7 @@ def local_session(options):
                 connection.send(audio)
             except (BrokenPipeError, EOFError, OSError) as exc:
                 raise _crashed(process) from exc
-            return _receive(connection, process, "text")
+            return _receive(connection, process, "text", progress_callback)
 
         yield transcribe
     finally:

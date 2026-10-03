@@ -27,7 +27,29 @@ def crashed_worker(connection, options):
     os._exit(17)
 
 
+def file_worker(connection, options):
+    connection.send(("ready", None))
+    path = connection.recv()
+    assert isinstance(path, str)
+    connection.send(("progress", 0))
+    connection.send(("progress", 45))
+    connection.send(("progress", 99))
+    connection.send(("text", path))
+    assert connection.recv() is None
+    connection.close()
+
+
 class LocalProcessTests(unittest.TestCase):
+    def test_file_request_and_progress_cross_process_boundary(self):
+        progress = []
+        before = {p.pid for p in multiprocessing.active_children()}
+        with patch("local_engine_process._serve", file_worker), local_session(
+            RecognitionOptions(engine="faster_whisper"), progress_callback=progress.append
+        ) as transcribe:
+            self.assertEqual("recording.wav", transcribe("recording.wav"))
+        self.assertEqual([0, 45, 99], progress)
+        self.assertEqual(before, {p.pid for p in multiprocessing.active_children()})
+
     def test_audio_round_trip_reuses_process_without_gui_imports(self):
         before = {p.pid for p in multiprocessing.active_children()}
         with patch("local_engine_process._serve", echo_worker), local_session(RecognitionOptions()) as transcribe:

@@ -4,16 +4,19 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import dataclass
+from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import speech_recognition as sr
 from audio_runtime import AudioSegment
 from pydub.utils import make_chunks
 
-from engines import RecognitionOptions, recognition_session
-
-REQUEST_TIMEOUT_SECONDS = 30
+from audio_policy import (CLOUD_UPLOAD_ENGINES, LOCAL_ENGINES, UPLOAD_SAMPLE_RATE,
+                          UPLOAD_SAMPLE_WIDTH, chunk_duration_ms, request_timeout)
+from engines import RecognitionOptions, recognition_session, validate_options
+from transcript_format import format_paragraphs
 
 
 @dataclass(frozen=True)
@@ -35,56 +38,81 @@ def convert_audio(
 ) -> ConversionResult:
     """Convert a WAV file and save its transcript.
 
-    The optional callback receives the percentage after each processed chunk.
+    The optional callback receives processed-chunk or local-engine progress.
+    Local engines receive a file path in their own process; their result counts
+    as one recognition unit, regardless of the number of transcript paragraphs.
     Recognition failures are represented in the result; file and unexpected
     errors propagate to the caller. This function runs synchronously.
     For temporary WAV inputs, output_source_path selects the original media
     path whose directory and stem are used for the transcript.
     recognition_options selects the engine; omitted options preserve Google.
     """
+    options = recognition_options or RecognitionOptions()
+    validate_options(options)
+    local = options.engine in LOCAL_ENGINES
     r = sr.Recognizer()
-    r.operation_timeout = REQUEST_TIMEOUT_SECONDS
-    with open(file_path, "rb") as input_file:
-        myaudio = AudioSegment.from_file(input_file, 'wav')
-    chunk_length_ms = 50000  # pydub calculates in milliseconds
-    chunks = make_chunks(myaudio, chunk_length_ms)
+    r.operation_timeout = request_timeout(options.engine)
+    if local:
+        # Only inspect the header here. Native decoders read the file in the child.
+        with sr.AudioFile(file_path) as source:
+            chunks = [str(Path(file_path).resolve())] if source.FRAME_COUNT else []
+    else:
+        with open(file_path, "rb") as input_file:
+            myaudio = AudioSegment.from_file(input_file, 'wav')
+        if options.engine in CLOUD_UPLOAD_ENGINES:
+            myaudio = myaudio.set_channels(1).set_frame_rate(UPLOAD_SAMPLE_RATE).set_sample_width(UPLOAD_SAMPLE_WIDTH)
+        chunks = make_chunks(myaudio, chunk_duration_ms(options.engine))
     if not chunks:
         return ConversionResult("failed", "", 0, 0, None,
                                 ("WAV dosyası ses verisi içermiyor.",))
     text_parts = []
     successful_chunks = 0
     errors = []
-    with recognition_session(r, recognition_options or RecognitionOptions()) as transcribe, \
-            TemporaryDirectory(prefix="wav_to_text_") as temp_dir:
+    last_progress = -1
+
+    def local_progress(value):
+        nonlocal last_progress
+        # 100 means the complete response has arrived, not just the last segment.
+        value = max(0, min(99, int(value)))
+        if progress_callback is not None and value > last_progress:
+            progress_callback(value)
+            last_progress = value
+
+    session_args = {"progress_callback": local_progress} if local else {}
+    with recognition_session(r, options, **session_args) as transcribe, \
+            (nullcontext(None) if local else TemporaryDirectory(prefix="wav_to_text_")) as temp_dir:
         for i, chunk in enumerate(chunks):
-            chunk_name = os.path.join(temp_dir, 'chunk{0}.wav'.format(i + 1))
-            with open(chunk_name, "wb") as chunk_file:
-                chunk.export(chunk_file, format='wav')
-            with sr.AudioFile(chunk_name) as source:
-                audio = r.record(source)  # read the entire audio file
-                try:
-                    transcript = transcribe(audio).strip()
-                    if not transcript:
-                        raise sr.UnknownValueError()
-                except sr.UnknownValueError:
-                    message = "{0}. parça: Ses algılanamadı.".format(i + 1)
-                    errors.append(message)
-                    text_parts.append("[{0}]".format(message))
-                except TimeoutError:
-                    message = "{0}. parça: Tanıma isteği zaman aşımına uğradı.".format(i + 1)
-                    errors.append(message)
-                    text_parts.append("[{0}]".format(message))
-                except sr.RequestError as e:
-                    message = "{0}. parça: Tanıma başarısız; {1}".format(i + 1, e)
-                    errors.append(message)
-                    text_parts.append("[{0}]".format(message))
-                else:
-                    text_parts.append(transcript)
-                    successful_chunks += 1
+            if local:
+                audio = chunk
+            else:
+                chunk_name = os.path.join(temp_dir, 'chunk{0}.wav'.format(i + 1))
+                with open(chunk_name, "wb") as chunk_file:
+                    chunk.export(chunk_file, format='wav')
+                with sr.AudioFile(chunk_name) as source:
+                    audio = r.record(source)
+            try:
+                transcript = transcribe(audio).strip()
+                if not transcript:
+                    raise sr.UnknownValueError()
+            except sr.UnknownValueError:
+                message = "{0}. parça: Ses algılanamadı.".format(i + 1)
+                errors.append(message)
+                text_parts.append("[{0}]".format(message))
+            except TimeoutError:
+                message = "{0}. parça: Tanıma isteği zaman aşımına uğradı.".format(i + 1)
+                errors.append(message)
+                text_parts.append("[{0}]".format(message))
+            except sr.RequestError as e:
+                message = "{0}. parça: Tanıma başarısız; {1}".format(i + 1, e)
+                errors.append(message)
+                text_parts.append("[{0}]".format(message))
+            else:
+                text_parts.append(format_paragraphs(transcript))
+                successful_chunks += 1
             if progress_callback is not None:
                 progress_callback((i + 1) * 100 // len(chunks))
 
-    # Keep each 50-second chunk (including failure markers) in its own paragraph.
+    # Keep failed requests in place, independently of paragraph formatting.
     text = "\n\n".join(text_parts)
     if not successful_chunks:
         return ConversionResult("failed", text, 0, len(chunks), None, tuple(errors))

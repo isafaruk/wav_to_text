@@ -102,6 +102,7 @@ def main():
         except Exception:
             failures.append(traceback.format_exc())
             print(failures[-1], flush=True)
+            print("Service state:", ascii(api.get_state()), flush=True)
         finally:
             window.destroy()
 

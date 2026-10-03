@@ -166,26 +166,55 @@ dosyalar işlem sonunda veya hata oluştuğunda temizlenir. Özgün dosya korunu
 çıktı onun yanına kaydedilir: `video.mp4` → `video.txt`. Aynı adlı metin dosyası
 varsa `video(1).txt` gibi bir ad kullanılır.
 
-TXT çıktısında her 50 saniyelik ses parçası ayrı bir paragrafta yer alır;
-paragraflar arasında bir boş satır bulunur. Son bölüm daha kısa olabilir.
+Ses işleme yöntemi seçilen motora göre değişir:
+
+| Motor | İşleme yöntemi |
+| --- | --- |
+| Google | 50 saniyelik istekler. |
+| Azure | Kısa ses REST bağlantısının 60 saniyelik sınırı için 50 saniyelik istekler. |
+| Groq / OpenAI | Gönderilecek ses önce 16 kHz, 16-bit, mono PCM yapılır. WAV başlığı dahil en fazla 24 MB'lık parçalar gönderilir; bu yaklaşık 12 dakika 30 saniyedir. Daha küçük kayıt tek istekte gönderilir. |
+| Faster Whisper / Whisper | Dosya tek tanıma oturumunda işlenir; model kendi iç pencerelerini yönetir. 50 saniyede bir tanıma yeniden başlatılmaz. |
+| Vosk | Tek tanıyıcı ses dosyasını küçük bloklarla okur; örnekleme dönüşümünün durumu bloklar arasında korunur. |
+
+Bulut yüklemesinde 24 MB seçimi, servislerin 25 MB sınırının altında pay bırakır.
+Kaynaklar: [Azure kısa ses](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/rest-speech-to-text-short),
+[Groq dosya sınırları](https://console.groq.com/docs/speech-to-text),
+[OpenAI dosya sınırları](https://developers.openai.com/api/docs/guides/speech-to-text).
+
+Yerel motorlara yalnızca dosya yolu gönderilir; ses ana arayüz sürecinde
+tamamıyla okunup süreçler arasında kopyalanmaz. Whisper motorları uzun kaydın
+sesini/özelliklerini yine kendi süreçlerinde belleğe alabilir; uzun kayıtlar
+ve büyük modeller daha fazla RAM gerektirir. Vosk ses verisini akışla okur.
+
+TXT paragrafları ses isteği sınırlarından bağımsızdır. Whisper motorlarının
+tamamlanmış metin bölümleri yaklaşık bir dakikalık gruplara ayrılır; Vosk'un
+tamamlanmış ifadeleri ayrı paragraflara yazılır. Uzun metin paragraflarında
+yaklaşık 500 karakterden sonra uygun noktalama işaretinde yeni paragraf açılır.
+Noktalama yoksa cümle ortasından zorla bölünmez. Paragraflar arasında boş satır vardır.
 Dosya UTF-8 olarak kaydedilir; Türkçe ve diğer Unicode karakterler Windows'un
 varsayılan karakter kodlamasından bağımsız olarak korunur.
 Anlaşılamayan veya tanıma hatası oluşan bölümler de kendi paragraflarında
-belirtilir. Paragraf sınırları ses parçalarına dayanır; cümle sonlarına göre
-belirlenmez.
+belirtilir.
 
 Arayüz önce WAV hazırlama, ardından konuşma tanıma aşamasını gösterir.
-İlerleme yüzdesi konuşma tanıma parçalarını izler. WAV hazırlama için zaman
-aşımı 10 dakika; Google, Groq, OpenAI ve Azure tanıma isteğinde ağ zaman
-aşımı 30 saniyedir. SpeechRecognition'ın Azure kimlik doğrulama isteği için
-kullandığı süre 60 saniyedir. Bunlar toplam iş süresi sınırı değildir; yerel
-model yükleme ve çıkarım süresine 30 saniyelik sınır uygulanmaz.
+Google/Azure/Groq/OpenAI ilerlemesi tamamlanan istekleri, Faster Whisper
+ilerlemesi tamamlanan model bölümlerinin zamanlarını, Vosk ilerlemesi işlenen
+ses bloklarını izler. Standart Whisper ara ilerleme sağlamaz; yüzde sonuç
+geldiğinde 100 olur. Yerel motorlarda dosya tek tanıma birimi sayılır;
+`total_chunks` değeri paragraf sayısını göstermez.
+WAV hazırlama için zaman aşımı 10 dakika; Google/Azure tanıma isteğinde
+30 saniye, daha uzun ses gönderen Groq/OpenAI isteklerinde 180 saniyedir.
+SpeechRecognition'ın Azure kimlik doğrulama isteği için kullandığı süre
+60 saniyedir. Bunlar toplam iş süresi sınırı değildir; yerel model yükleme
+ve çıkarım süresine ağ zaman aşımı uygulanmaz.
 
 Kodun sorumlulukları ayrı dosyalarda tutulur:
 
 | Dosya | Sorumluluk |
 | --- | --- |
 | `backend.py` | WAV okuma, parçalama, konuşma tanıma, geçici dosyalar ve metni kaydetme. PyQt bağımlılığı yoktur. |
+| `audio_policy.py` | Motorlara göre istek süresi, yükleme boyutu ve ağ zaman aşımı sınırları. |
+| `transcript_format.py` | Ses parçalama yönteminden bağımsız paragraf düzeni. |
 | `engines.py` | Motor seçenekleri, ayar kontrolü, yerel model/bulut istemcisi yükleme ve Türkçe tanıma. PyQt bağımlılığı yoktur. |
 | `local_engine_process.py` | Yerel modelleri GUI'den ayrı süreçte çalıştırır, çökme kodunu okunabilir hataya çevirir. |
 | `audio_runtime.py` | Pydub'ı paketle gelen FFmpeg'e yönlendirir. |
